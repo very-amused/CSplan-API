@@ -1,12 +1,45 @@
 package routes
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
+
+// Route - Information to handle HTTP routes
+type Route struct {
+	handler   func(c context.Context, w http.ResponseWriter, r *http.Request)
+	AuthLevel int
+}
 
 // Map - Static map of HTTP routes to their corresponding handlers
-var Map = make(map[string]func(w http.ResponseWriter, r *http.Request))
+var Map = make(map[string]Route)
+
+// Private ctx keys
+type key string
+
+// Handler - Public handler wrapper for each route
+func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	ctx := r.Context()
+	// Handle authentication
+	switch route.AuthLevel {
+	case 1:
+		id, err := Authenticate(w, r)
+		if err != nil {
+			return
+		}
+		// Add the user id to the route context
+		ctx = context.WithValue(ctx, key("user"), id)
+	}
+	route.handler(ctx, w, r)
+}
 
 func init() {
-	Map["POST:/register"] = Register
+	Map["POST:/register"] = Route{
+		handler:   Register,
+		AuthLevel: 0}
 
-	Map["POST:/login"] = Login
+	Map["POST:/login"] = Route{
+		handler:   Login,
+		AuthLevel: 0}
 }

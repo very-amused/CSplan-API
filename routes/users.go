@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -29,7 +30,7 @@ type UserState struct {
 // Tokens - Authentication tokens for a user
 type Tokens struct {
 	Token     string `json:"token"`
-	CRSFtoken string `json:"CRSFtoken"`
+	CSRFtoken string `json:"CRSFtoken"`
 }
 
 // Scrypt Params - N, r, p, keyLen
@@ -151,11 +152,11 @@ func (user *User) newTokens() (Tokens, error) {
 	rand.Read(tokenBytes)
 	rand.Read(csrftokenBytes)
 
-	Token := fmt.Sprintf("%s-%d", base64.URLEncoding.EncodeToString(tokenBytes), user.ID)
+	Token := fmt.Sprintf("%s:%d", base64.URLEncoding.EncodeToString(tokenBytes), user.ID)
 	CSRFtoken := base64.URLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
-	_, err = tx.Exec("INSERT INTO Tokens (UserID, Token, CSRFToken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
+	_, err = tx.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -167,7 +168,7 @@ func (user *User) newTokens() (Tokens, error) {
 }
 
 // Register - Create a new account
-func Register(w http.ResponseWriter, r *http.Request) {
+func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 	if err := HTTPValidate(w, user); err != nil {
@@ -205,7 +206,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // Login - Authenticate a user and send them an auth + CSRF token
-func Login(w http.ResponseWriter, r *http.Request) {
+func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 	if err := HTTPValidate(w, user); err != nil {
@@ -234,6 +235,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
+	w.Header().Add("Set-Cookie", cookie)
 	w.WriteHeader(201)
-	json.NewEncoder(w).Encode(tokens)
+	json.NewEncoder(w).Encode(tokens.CSRFtoken)
 }

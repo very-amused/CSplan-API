@@ -11,19 +11,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func loadMiddleware(r *mux.Router) {
-	r.Use(setContentType)
-}
-
 func loadRoutes(r *mux.Router) {
-	for key, handler := range routes.Map {
+	for key, route := range routes.Map {
 		// Parse method and path from route key
 		slice := strings.Split(key, ":")
 		method := slice[0]
 		path := slice[1]
 
+		if route.AuthLevel < 0 || route.AuthLevel > 1 {
+			log.Fatalf(`Invalid authentication level for route %s
+			This can be fixed in routes/map.go`, key)
+		}
+
 		// Add route to the router (specific for each EXACT path)
-		r.HandleFunc(path, handler).Methods(method)
+		r.HandleFunc(path, route.Handler).Methods(method)
 	}
 
 	// Add a catchall route for otherwise unmatched routes
@@ -38,7 +39,6 @@ func loadRoutes(r *mux.Router) {
 
 func main() {
 	r := mux.NewRouter()
-	loadMiddleware(r)
 	loadRoutes(r)
 
 	fmt.Println("Starting up CSplan API 🚀")

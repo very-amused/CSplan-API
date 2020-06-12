@@ -14,6 +14,10 @@ type Error struct {
 	Status  int    `json:"status"`
 }
 
+func (e Error) Error() string {
+	return e.Message
+}
+
 var validate *validator.Validate
 
 func init() {
