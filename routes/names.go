@@ -3,38 +3,45 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
 // Name - Names for a user
 type Name struct {
-	FirstName string   `json:"firstname" validate:"max=255"`
-	LastName  string   `json:"lastname" validate:"max=255"`
-	Username  string   `json:"username" validate:"max=255"`
-	Meta      NameMeta `json:"meta" validate:"required"`
-}
-
-// NamePatch - Same as Names, except without required cryptokey
-type NamePatch struct {
 	FirstName string `json:"firstname" validate:"max=255"`
 	LastName  string `json:"lastname" validate:"max=255"`
 	Username  string `json:"username" validate:"max=255"`
+	Meta      Meta   `json:"meta" validate:"required"`
 }
 
-// NameMeta - Full meta for all encrypted fields of names
-type NameMeta struct {
+// Meta - Full meta for all encrypted fields of a resource
+type Meta struct {
 	CryptoKey string `json:"cryptoKey" validate:"required"`
 	Checksum  string `json:"checksum"`
 }
 
-// NameResponse - Response to creation or update of a name
-type NameResponse struct {
-	Meta NameState `json:"meta"`
+// NamePatch - Same as Names, except without required cryptokey
+type NamePatch struct {
+	FirstName string    `json:"firstname" validate:"max=255"`
+	LastName  string    `json:"lastname" validate:"max=255"`
+	Username  string    `json:"username" validate:"max=255"`
+	Meta      MetaPatch `json:"meta"`
 }
 
-// NameState - Partial meta (checksum) for all encrypted fields of names
+// MetaPatch - Patch to update a resource's meta
+type MetaPatch struct {
+	CryptoKey string `json:"cryptoKey"`
+}
+
+// MetaResponse - Response to creation or update of a name
+type MetaResponse struct {
+	Meta State `json:"meta"`
+}
+
+// State - Partial meta (checksum) for all encrypted fields of a resource
 // Used for responses to post/patch reqs
-type NameState struct {
+type State struct {
 	Checksum string `json:"checksum"`
 }
 
@@ -82,8 +89,8 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	tx.Commit()
 
 	w.WriteHeader(201)
-	json.NewEncoder(w).Encode(NameResponse{
-		Meta: NameState{
+	json.NewEncoder(w).Encode(MetaResponse{
+		Meta: State{
 			Checksum}})
 }
 
@@ -142,19 +149,41 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	// Existence check
+	var exists int
+	err = tx.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
+	if err != nil {
+		HTTPError(w, Error{
+			Title:   "Not Found",
+			Message: "The requested name was not found",
+			Status:  404})
+		return
+	}
+
 	// Only patch the fields that aren't empty
+	fmt.Println(patch.Username)
+	errs := make([]error, 4)
 	if len(patch.FirstName) > 0 {
 		_, err = tx.Exec("UPDATE Names SET FirstName = ? WHERE UserID = ?", patch.FirstName, user)
+		errs = append(errs, err)
 	}
 	if len(patch.LastName) > 0 {
-		_, err = tx.Exec("UPDATE  SET LastName = ? WHERE UserID = ?", patch.LastName, user)
+		_, err = tx.Exec("UPDATE Names SET LastName = ? WHERE UserID = ?", patch.LastName, user)
+		errs = append(errs, err)
 	}
 	if len(patch.Username) > 0 {
-		_, err = tx.Exec("UPDATE  SET Username = ? WHERE UserID = ?", patch.Username, user)
+		_, err = tx.Exec("UPDATE Names SET Username = ? WHERE UserID = ?", patch.Username, user)
+		errs = append(errs, err)
 	}
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
+	if len(patch.Meta.CryptoKey) > 0 {
+		_, err = tx.Exec("UPDATE Names SET CryptoKey = ? WHERE UserID = ?", patch.Meta.CryptoKey, user)
+		errs = append(errs, err)
+	}
+	for _, err = range errs {
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
 	}
 
 	var Checksum string
@@ -165,8 +194,8 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 
-	json.NewEncoder(w).Encode(NameResponse{
-		Meta: NameState{
+	json.NewEncoder(w).Encode(MetaResponse{
+		Meta: State{
 			Checksum}})
 }
 

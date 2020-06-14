@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 	CSRFtoken char(44) NOT NULL
 );
 
+-- Cryptography management - Keys
+CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
+	UserID bigint unsigned NOT NULL,
+	PublicKey blob NOT NULL,
+	PrivateKey blob NOT NULL,
+	PBKDF2salt tinyblob NOT NULL
+);
+
 -- Personalization - Names + Identifiers
 CREATE TABLE IF NOT EXISTS CSplanGo.Names (
 	UserID bigint unsigned NOT NULL,

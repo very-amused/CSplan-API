@@ -42,6 +42,13 @@ func init() {
 		handler:   Login,
 		AuthLevel: 0}
 
+	Map["POST:/keys"] = Route{
+		handler:   AddKeys,
+		AuthLevel: 1}
+	Map["GET:/keys"] = Route{
+		handler:   GetKeys,
+		AuthLevel: 1}
+
 	Map["POST:/name"] = Route{
 		handler:   AddName,
 		AuthLevel: 1}
