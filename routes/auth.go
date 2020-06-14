@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -11,25 +12,29 @@ var authError Error = Error{
 	Status:  401}
 
 // Authenticate - Authorize and identify a user for a authenticate route.
-func Authenticate(w http.ResponseWriter, r *http.Request) (id string, e error) {
+func Authenticate(w http.ResponseWriter, r *http.Request) (id int, e error) {
 	token, err := r.Cookie("Authorization")
 	if err != nil {
 		HTTPError(w, authError)
-		return "", authError
+		return 0, authError
 	}
-	csrftoken := r.Header.Get("CRSF-Token")
+	csrftoken := r.Header.Get("CSRF-Token")
 	if len(csrftoken) == 0 {
 		HTTPError(w, authError)
-		return "", authError
+		return 0, authError
 	}
 
 	// Parse user id from auth token
-	id = strings.Split(token.Value, ":")[1]
+	id, err = strconv.Atoi(strings.Split(token.Value, ":")[1])
+	if err != nil {
+		HTTPError(w, authError)
+		return 0, authError
+	}
 
 	rows, err := DB.Queryx("SELECT Token, CSRFtoken FROM Tokens WHERE UserID = ?", id)
 	if err != nil {
 		HTTPInternalServerError(w, err)
-		return "", err
+		return 0, err
 	}
 	for rows.Next() {
 		var t Tokens
@@ -39,5 +44,5 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id string, e error) {
 		}
 	}
 	HTTPError(w, authError)
-	return "", authError
+	return 0, authError
 }

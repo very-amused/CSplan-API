@@ -38,8 +38,20 @@ func init() {
 	Map["POST:/register"] = Route{
 		handler:   Register,
 		AuthLevel: 0}
-
 	Map["POST:/login"] = Route{
 		handler:   Login,
 		AuthLevel: 0}
+
+	Map["POST:/name"] = Route{
+		handler:   AddName,
+		AuthLevel: 1}
+	Map["GET:/name"] = Route{
+		handler:   GetName,
+		AuthLevel: 1}
+	Map["PATCH:/name"] = Route{
+		handler:   UpdateName,
+		AuthLevel: 1}
+	Map["DELETE:/name"] = Route{
+		handler:   DeleteName,
+		AuthLevel: 1}
 }
