@@ -3,35 +3,34 @@ package routes
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 )
 
 // Name - Names for a user
 type Name struct {
-	FirstName string `json:"firstname" validate:"max=255"`
-	LastName  string `json:"lastname" validate:"max=255"`
-	Username  string `json:"username" validate:"max=255"`
+	FirstName string `json:"firstname" validate:"max=255,omitempty,base64"`
+	LastName  string `json:"lastname" validate:"max=255,omitempty,base64"`
+	Username  string `json:"username" validate:"max=255,omitempty,base64"`
 	Meta      Meta   `json:"meta" validate:"required"`
 }
 
 // Meta - Full meta for all encrypted fields of a resource
 type Meta struct {
-	CryptoKey string `json:"cryptoKey" validate:"required"`
+	CryptoKey string `json:"cryptoKey" validate:"base64"`
 	Checksum  string `json:"checksum"`
 }
 
 // NamePatch - Same as Names, except without required cryptokey
 type NamePatch struct {
-	FirstName string    `json:"firstname" validate:"max=255"`
-	LastName  string    `json:"lastname" validate:"max=255"`
-	Username  string    `json:"username" validate:"max=255"`
+	FirstName string    `json:"firstname" validate:"max=255,omitempty,base64"`
+	LastName  string    `json:"lastname" validate:"max=255,omitempty,base64"`
+	Username  string    `json:"username" validate:"max=255,omitempty,base64"`
 	Meta      MetaPatch `json:"meta"`
 }
 
 // MetaPatch - Patch to update a resource's meta
 type MetaPatch struct {
-	CryptoKey string `json:"cryptoKey"`
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64"`
 }
 
 // MetaResponse - Response to creation or update of a name
@@ -72,7 +71,7 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tx.Exec("INSERT INTO Names (UserID, FirstName, LastName, Username, CryptoKey) VALUES (?, ?, ?, ?, ?)",
+	_, err = tx.Exec("INSERT INTO Names (UserID, FirstName, LastName, Username, CryptoKey) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
 		user, name.FirstName, name.LastName, name.Username, name.Meta.CryptoKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -81,7 +80,7 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Select checksum for encrypted fields
 	var Checksum string
-	err = tx.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS checksum FROM Names WHERE UserID = ?", user)
+	err = tx.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -105,7 +104,7 @@ func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	var name Name
-	err = tx.Get(&name, "SELECT FirstName, LastName, Username FROM Names WHERE UserID = ?", user)
+	err = tx.Get(&name, "SELECT TO_BASE64(FirstName) AS FirstName, TO_BASE64(LastName) AS LastName, TO_BASE64(Username) AS Username FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Not Found",
@@ -115,7 +114,7 @@ func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refuse to return a resource without its associated cryptokey
-	err = tx.Get(&name.Meta, "SELECT CryptoKey, SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
+	err = tx.Get(&name.Meta, "SELECT TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
 	if err != nil || len(name.Meta.CryptoKey) == 0 {
 		_, err = DB.Exec("DELETE FROM Names WHERE UserID = ?", user)
 		if err != nil {
@@ -161,22 +160,21 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Only patch the fields that aren't empty
-	fmt.Println(patch.Username)
 	errs := make([]error, 4)
 	if len(patch.FirstName) > 0 {
-		_, err = tx.Exec("UPDATE Names SET FirstName = ? WHERE UserID = ?", patch.FirstName, user)
+		_, err = tx.Exec("UPDATE Names SET FirstName = FROM_BASE64(?) WHERE UserID = ?", patch.FirstName, user)
 		errs = append(errs, err)
 	}
 	if len(patch.LastName) > 0 {
-		_, err = tx.Exec("UPDATE Names SET LastName = ? WHERE UserID = ?", patch.LastName, user)
+		_, err = tx.Exec("UPDATE Names SET LastName = FROM_BASE64(?) WHERE UserID = ?", patch.LastName, user)
 		errs = append(errs, err)
 	}
 	if len(patch.Username) > 0 {
-		_, err = tx.Exec("UPDATE Names SET Username = ? WHERE UserID = ?", patch.Username, user)
+		_, err = tx.Exec("UPDATE Names SET Username = FROM_BASE64(?) WHERE UserID = ?", patch.Username, user)
 		errs = append(errs, err)
 	}
 	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = tx.Exec("UPDATE Names SET CryptoKey = ? WHERE UserID = ?", patch.Meta.CryptoKey, user)
+		_, err = tx.Exec("UPDATE Names SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", patch.Meta.CryptoKey, user)
 		errs = append(errs, err)
 	}
 	for _, err = range errs {

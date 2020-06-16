@@ -24,11 +24,10 @@ CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
 
 -- Personalization - Names + Identifiers
 CREATE TABLE IF NOT EXISTS CSplanGo.Names (
-	UserID bigint unsigned NOT NULL,
-	FirstName varchar(255) NOT NULL DEFAULT '',
-	LastName varchar(255) NOT NULL DEFAULT '',
-	Username varchar(255) NOT NULL DEFAULT '',
-	CryptoKey text NOT NULL,
-	PRIMARY KEY (UserID),
-	UNIQUE (Identifier)
+	UserID bigint NOT NULL,
+	FirstName tinyblob NOT NULL DEFAULT '',
+	LastName tinyblob NOT NULL DEFAULT '',
+	Username tinyblob NOT NULL DEFAULT '',
+	CryptoKey blob NOT NULL,
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
