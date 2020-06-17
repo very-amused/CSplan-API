@@ -61,4 +61,11 @@ func init() {
 	Map["DELETE:/name"] = Route{
 		handler:   DeleteName,
 		AuthLevel: 1}
+
+	Map["POST:/todos"] = Route{
+		handler:   AddTodo,
+		AuthLevel: 1}
+	Map["GET:/todos"] = Route{
+		handler:   GetTodos,
+		AuthLevel: 1}
 }
