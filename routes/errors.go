@@ -50,3 +50,12 @@ func HTTPInternalServerError(w http.ResponseWriter, e error) {
 		Status:  500}
 	HTTPError(w, err)
 }
+
+// HTTPNotFoundError - Write a JSON formatted 404 error to w
+func HTTPNotFoundError(w http.ResponseWriter) {
+	err := Error{
+		Title:   "Not Found",
+		Message: "The requested resource was unable to be found",
+		Status:  404}
+	HTTPError(w, err)
+}

@@ -152,10 +152,7 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var exists int
 	err = tx.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
 	if err != nil {
-		HTTPError(w, Error{
-			Title:   "Not Found",
-			Message: "The requested name was not found",
-			Status:  404})
+		HTTPNotFoundError(w)
 		return
 	}
 

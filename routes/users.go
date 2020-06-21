@@ -30,7 +30,12 @@ type UserState struct {
 // Tokens - Authentication tokens for a user
 type Tokens struct {
 	Token     string `json:"token"`
-	CSRFtoken string `json:"CRSFtoken"`
+	CSRFtoken string `json:"CSRFtoken"`
+}
+
+// TokenResponse - Response to a successful login attempt
+type TokenResponse struct {
+	CSRFtoken string `json:"CSRFtoken"`
 }
 
 // Scrypt Params - N, r, p, keyLen
@@ -238,5 +243,6 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
 	w.Header().Add("Set-Cookie", cookie)
 	w.WriteHeader(201)
-	json.NewEncoder(w).Encode(tokens.CSRFtoken)
+	json.NewEncoder(w).Encode(TokenResponse{
+		CSRFtoken: tokens.CSRFtoken})
 }

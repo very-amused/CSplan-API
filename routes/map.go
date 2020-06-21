@@ -68,4 +68,13 @@ func init() {
 	Map["GET:/todos"] = Route{
 		handler:   GetTodos,
 		AuthLevel: 1}
+	Map["GET:/todos/{id}"] = Route{
+		handler:   GetTodo,
+		AuthLevel: 1}
+	Map["PATCH:/todos/{id}"] = Route{
+		handler:   UpdateTodo,
+		AuthLevel: 1}
+	Map["DELETE:/todos/{id}"] = Route{
+		handler:   DeleteTodo,
+		AuthLevel: 1}
 }
