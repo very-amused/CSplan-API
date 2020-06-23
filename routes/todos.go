@@ -42,16 +42,21 @@ type IndexedState struct {
 
 // TodoResponse - Response to creation or update of a todo list
 type TodoResponse struct {
-	ID        uint         `json:"id"`
-	EncodedID string       `json:"encoded_id"`
-	Meta      IndexedState `json:"meta"`
+	ID   uint         `json:"id"`
+	Meta IndexedState `json:"meta"`
 }
 
 // TodoPatch - Patch to update a todolist
 type TodoPatch struct {
-	Title string     `json:"title" validate:"omitempty,base64,max=255"`
-	Items []TodoItem `json:"items" validate:"dive"`
-	Meta  MetaPatch  `json:"meta"`
+	Title string           `json:"title" validate:"omitempty,base64,max=255"`
+	Items []TodoItem       `json:"items" validate:"dive"`
+	Meta  IndexedMetaPatch `json:"meta"`
+}
+
+// IndexedMetaPatch - Same as MetaPatch but with index
+type IndexedMetaPatch struct {
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64"`
+	Index     uint   `json:"index" db:"_Index"`
 }
 
 // TodoList.makeID - Make list.ID as a 20-digit unsigned integer
@@ -168,7 +173,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var max uint
 	err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		w.WriteHeader(204)
 		return
 	}
 	rows, err := tx.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
@@ -315,6 +320,58 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
+	}
+
+	// If there's an index shift specified, perform it
+	n := patch.Meta.Index
+	o := state.Index
+	if n != o {
+		// Create an array of ids for all todos belonging to the user
+		var max int
+		err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+
+		// Copy
+		todos := make([]uint, max+1)
+		for i := 0; i <= max; i++ {
+			err = tx.Get(&todos[i], "SELECT ID FROM TodoLists WHERE _Index = ?", i)
+			if err != nil {
+				HTTPInternalServerError(w, err)
+				return
+			}
+		}
+
+		// Substitute
+		_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, todos[o])
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+
+		// Shift
+		if n > o {
+			// (o, n]
+			for i := o + 1; i <= n; i++ {
+				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, todos[i])
+				if err != nil {
+					HTTPInternalServerError(w, err)
+					return
+				}
+			}
+		} else if n < o {
+			// (n, o]
+			for i := n + 1; i <= o; i++ {
+				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, todos[i-1])
+				if err != nil {
+					HTTPInternalServerError(w, err)
+					return
+				}
+			}
+		}
+		state.Index = n
 	}
 	tx.Commit()
 
