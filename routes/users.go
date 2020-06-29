@@ -38,6 +38,11 @@ type TokenResponse struct {
 	CSRFtoken string `json:"CSRFtoken"`
 }
 
+// DeleteToken - Response to a request for account deletion
+type DeleteToken struct {
+	Token string `json:"token"`
+}
+
 // Scrypt Params - N, r, p, keyLen
 var _N, r, p, keyLen = 32768, 9, 1, 32
 
@@ -245,4 +250,47 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(TokenResponse{
 		CSRFtoken: tokens.CSRFtoken})
+}
+
+// DeleteAccount - Delete a user's account
+func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	user := ctx.Value(key("user")).(int)
+	confirm := r.Header.Get("X-Confirm")
+
+	if len(confirm) > 0 {
+		tx, err := DB.Beginx()
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+		defer tx.Rollback()
+
+		tx.Exec("DELETE FROM TodoLists WHERE UserID = ?", user)
+		tx.Exec("DELETE FROM Names WHERE UserID = ?", user)
+		tx.Exec("DELETE FROM CryptoKeys WHERE UserID = ?", user)
+		tx.Exec("DELETE FROM DeleteTokens WHERE UserID = ?", user)
+		tx.Exec("DELETE FROM Tokens WHERE UserID = ?", user)
+		tx.Exec("DELETE FROM Users WHERE ID = ?", user)
+		tx.Commit()
+		w.WriteHeader(204)
+	} else {
+		// If there isn't a confirmation header, prompt the user for confirmation
+		bytes := make([]byte, 32)
+		_, err := rand.Read(bytes)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+
+		// Encode token to string
+		token := base64.RawURLEncoding.EncodeToString(bytes)
+		_, err = DB.Exec("INSERT INTO DeleteTokens (UserID, Token) VALUES (?, ?)", user, token)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+
+		json.NewEncoder(w).Encode(DeleteToken{
+			Token: token})
+	}
 }

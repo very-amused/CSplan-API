@@ -401,8 +401,8 @@ func DeleteTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Select useful information that will be used for updating indexes later
 	var max, index uint
-	DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
-	DB.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	tx.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 
 	results, _ := tx.Exec("DELETE FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 	if affected, _ := results.RowsAffected(); affected > 0 {

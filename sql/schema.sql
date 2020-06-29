@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 	CSRFtoken char(44) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
+	UserID bigint unsigned NOT NULL,
+	Token char(43) NOT NULL,
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
+
 -- Cryptography management - Keys
 CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
 	UserID bigint unsigned NOT NULL,

@@ -41,6 +41,9 @@ func init() {
 	Map["POST:/login"] = Route{
 		handler:   Login,
 		AuthLevel: 0}
+	Map["DELETE:/account/delete"] = Route{
+		handler:   DeleteAccount,
+		AuthLevel: 1}
 
 	Map["POST:/keys"] = Route{
 		handler:   AddKeys,
