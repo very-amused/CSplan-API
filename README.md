@@ -3,7 +3,7 @@ CSplan - go backend
 
 ## Roadmap
 - [x] CRUD Names
-- [ ] CRUD Keys
-- [ ] CRUD Todos
-- [ ] Index management for todos
+- [ ] CRUD Keys (with warning + confirm for update/delete operations)
+- [x] CRUD Todos
+- [x] Index management for todos
 - [ ] Websocket based todo reminders
