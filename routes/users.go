@@ -265,6 +265,17 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		}
 		defer tx.Rollback()
 
+		// Verify legitimacy of token
+		var token string
+		tx.Get(&token, "SELECT Token FROM DeleteTokens WHERE UserID = ?", user)
+		if confirm != token {
+			HTTPError(w, Error{
+				Title:   "Forbidden",
+				Message: "Invalid or malformed confirmation token",
+				Status:  403})
+			return
+		}
+
 		tx.Exec("DELETE FROM TodoLists WHERE UserID = ?", user)
 		tx.Exec("DELETE FROM Names WHERE UserID = ?", user)
 		tx.Exec("DELETE FROM CryptoKeys WHERE UserID = ?", user)
@@ -275,6 +286,17 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(204)
 	} else {
 		// If there isn't a confirmation header, prompt the user for confirmation
+		exists := 0
+		DB.Get(&exists, "SELECT 1 FROM DeleteTokens WHERE UserID = ?", user)
+		if exists == 1 {
+			HTTPError(w, Error{
+				Title:   "Resource Conflict",
+				Message: "This user already has a delete token stored. It will be automatically cleared in approximately 5min.",
+				Status:  409})
+			return
+		}
+
+		// Make the user a confirmation token
 		bytes := make([]byte, 32)
 		_, err := rand.Read(bytes)
 		if err != nil {

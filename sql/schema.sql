@@ -1,3 +1,6 @@
+-- Enable global event scheduler
+SET GLOBAL event_scheduler = ON;
+
 -- Authentication - Users and Tokens
 CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	ID bigint unsigned NOT NULL,
@@ -17,8 +20,20 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
 	UserID bigint unsigned NOT NULL,
 	Token char(43) NOT NULL,
-	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+	_Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
+	PRIMARY KEY (UserID) -- Only one deletetoken can be stored for a user at a time
 );
+
+-- Create event for clearing delete tokens older than 10min
+delimiter |
+CREATE EVENT IF NOT EXISTS CSplanGo.ClearDeleteTokens
+	ON SCHEDULE EVERY 1 MINUTE
+	COMMENT "Clear delete tokens older than 5 minutes."
+	DO
+		BEGIN
+			DELETE FROM CSplanGo.DeleteTokens WHERE UNIX_TIMESTAMP() - _Timestamp > 300;
+		END |
+delimiter ;
 
 -- Cryptography management - Keys
 CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
