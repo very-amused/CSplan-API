@@ -2,10 +2,7 @@ package routes
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
-	"math"
 	"net/http"
 	"strconv"
 
@@ -14,10 +11,11 @@ import (
 
 // TodoList - A titled list of TodoItems
 type TodoList struct {
-	ID    uint        `json:"id"`
-	Title string      `json:"title" validate:"required,base64,max=255"`
-	Items []TodoItem  `json:"items" validate:"required,dive"`
-	Meta  IndexedMeta `json:"meta" validate:"required"`
+	ID        uint        `json:"-"`
+	EncodedID string      `json:"id"`
+	Title     string      `json:"title" validate:"required,base64,max=255"`
+	Items     []TodoItem  `json:"items" validate:"required,dive"`
+	Meta      IndexedMeta `json:"meta" validate:"required"`
 }
 
 // TodoItem - A singular todo item belonging to a parent TodoList
@@ -42,8 +40,8 @@ type IndexedState struct {
 
 // TodoResponse - Response to creation or update of a todo list
 type TodoResponse struct {
-	ID   uint         `json:"id"`
-	Meta IndexedState `json:"meta"`
+	EncodedID string       `json:"id"`
+	Meta      IndexedState `json:"meta"`
 }
 
 // TodoPatch - Patch to update a todolist
@@ -59,27 +57,6 @@ type IndexedMetaPatch struct {
 	Index     uint   `json:"index" db:"_Index"`
 }
 
-// TodoList.makeID - Make list.ID as a 20-digit unsigned integer
-func (list *TodoList) makeID() error {
-	bytes := make([]byte, 8)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return err
-	}
-
-	id := uint(binary.BigEndian.Uint64(bytes))
-	for math.Ceil(math.Log10(float64(id))) < 20 {
-		_, err := rand.Read(bytes)
-		if err != nil {
-			return err
-		}
-
-		id += uint(binary.BigEndian.Uint64(bytes))
-	}
-	list.ID = id
-	return nil
-}
-
 // parseID - Parse a uint ID from a string representation
 func parseID(strID string) (uint, error) {
 	id, e := strconv.ParseUint(strID, 10, 0)
@@ -93,8 +70,12 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if err := HTTPValidate(w, list); err != nil {
 		return
 	}
-	user := ctx.Value(key("user")).(int)
-	if err := list.makeID(); err != nil {
+	user := ctx.Value(key("user")).(uint)
+
+	// Generate a random 20 digit id
+	var err error
+	list.ID, err = MakeID(20)
+	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
@@ -153,7 +134,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	tx.Commit()
 
 	json.NewEncoder(w).Encode(TodoResponse{
-		ID: list.ID,
+		EncodedID: EncodeID(list.ID),
 		Meta: IndexedState{
 			Index:    index,
 			Checksum: Checksum}})
@@ -161,7 +142,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // GetTodos - Retrieve a slice of all todo lists belonging to a user
 func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -173,7 +154,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var max uint
 	err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
-		w.WriteHeader(204)
+		json.NewEncoder(w).Encode(make([]TodoList, 0))
 		return
 	}
 	rows, err := tx.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
@@ -199,6 +180,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 
 		lists[list.Meta.Index] = list
+		lists[list.Meta.Index].EncodedID = EncodeID(list.ID)
 	}
 	tx.Commit()
 
@@ -207,7 +189,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // GetTodo - Retrieve a single todo list by id
 func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 	var list TodoList
 
 	// Parse ID from url
@@ -247,14 +229,15 @@ func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		HTTPInternalServerError(w, err)
 		return
 	}
+	list.EncodedID = EncodeID(list.ID)
 
 	json.NewEncoder(w).Encode(list)
 }
 
 // UpdateTodo - Update a todo list by id
 func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
-	id, err := parseID(mux.Vars(r)["id"])
+	user := ctx.Value(key("user")).(uint)
+	id, err := DecodeID(mux.Vars(r)["id"])
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Bad Request",
@@ -278,10 +261,10 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	// Existence + ownership check
-	var exists int
-	err = tx.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?",
+	exists := 0
+	tx.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?",
 		id, user)
-	if err != nil {
+	if exists != 1 {
 		HTTPNotFoundError(w)
 		return
 	}
@@ -376,18 +359,18 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	tx.Commit()
 
 	json.NewEncoder(w).Encode(TodoResponse{
-		ID:   id,
-		Meta: state})
+		EncodedID: EncodeID(id),
+		Meta:      state})
 }
 
 // DeleteTodo - Delete a todo list by ID
 func DeleteTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
-	id, err := parseID(mux.Vars(r)["id"])
+	user := ctx.Value(key("user")).(uint)
+	id, err := DecodeID(mux.Vars(r)["id"])
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Bad Request",
-			Message: "Malformed ID param",
+			Message: "Malformed or missing ID param",
 			Status:  400})
 		return
 	}

@@ -66,3 +66,12 @@ CREATE TABLE IF NOT EXISTS CSplanGo.TodoLists (
 	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
+
+CREATE TABLE IF NOT EXISTS CSplanGo.Categories (
+	ID bigint unsigned NOT NULL,
+	UserID bigint unsigned NOT NULL,
+	Title tinyblob NOT NULL DEFAULT '',
+	Color char(6) NOT NULL DEFAULT 'FFFFFF',
+	PRIMARY KEY (ID),
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);

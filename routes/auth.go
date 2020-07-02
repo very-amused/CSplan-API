@@ -12,7 +12,7 @@ var authError Error = Error{
 	Status:  401}
 
 // Authenticate - Authorize and identify a user for a authenticate route.
-func Authenticate(w http.ResponseWriter, r *http.Request) (id int, e error) {
+func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 	token, err := r.Cookie("Authorization")
 	if err != nil {
 		HTTPError(w, authError)
@@ -25,11 +25,12 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id int, e error) {
 	}
 
 	// Parse user id from auth token
-	id, err = strconv.Atoi(strings.Split(token.Value, ":")[1])
+	parsedID, err := strconv.ParseUint(strings.Split(token.Value, ":")[1], 10, 0)
 	if err != nil {
 		HTTPError(w, authError)
 		return 0, authError
 	}
+	id = uint(parsedID)
 
 	rows, err := DB.Queryx("SELECT Token, CSRFtoken FROM Tokens WHERE UserID = ?", id)
 	if err != nil {

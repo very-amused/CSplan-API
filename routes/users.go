@@ -4,18 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"golang.org/x/crypto/scrypt"
 )
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID             int
+	ID             uint   `json:"-"`
+	EncodedID      string `json:"id"`
 	Email          string `json:"email" validate:"required,email"`
 	Password       string `json:"password" validate:"required,max=60"`
 	HashedPassword []byte `db:"Password"`
@@ -23,24 +22,24 @@ type User struct {
 
 // UserState - State information for a user
 type UserState struct {
-	ID       int  `json:"id"`
-	Verified bool `json:"verified"`
+	EncodedID string `json:"id"`
+	Verified  bool   `json:"verified"`
 }
 
 // Tokens - Authentication tokens for a user
 type Tokens struct {
-	Token     string `json:"token"`
-	CSRFtoken string `json:"CSRFtoken"`
-}
-
-// TokenResponse - Response to a successful login attempt
-type TokenResponse struct {
+	Token     string `json:"-"`
 	CSRFtoken string `json:"CSRFtoken"`
 }
 
 // DeleteToken - Response to a request for account deletion
 type DeleteToken struct {
 	Token string `json:"token"`
+}
+
+// DeleteConfirm - Message confirming that a user's account has been completely and permanently deleted
+type DeleteConfirm struct {
+	Message string `json:"message"`
 }
 
 // Scrypt Params - N, r, p, keyLen
@@ -104,23 +103,6 @@ func (user *User) hasValidPassword() bool {
 	return true
 }
 
-func (user *User) makeID() error {
-	// Cryptographically generate 18 random bytes and write it to an unsigned int
-	bytes := make([]byte, 18)
-	rand.Read(bytes)
-	id := int(binary.BigEndian.Uint64(bytes))
-	if id < 0 {
-		id = -id
-	}
-
-	// Ensure the int is 18 digits long by converting to string, slicing, and converting back to int
-	strID := strconv.Itoa(id)[0:18]
-	id, _ = strconv.Atoi(strID)
-
-	user.ID = id
-	return nil
-}
-
 func (user *User) insert() error {
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -162,10 +144,12 @@ func (user *User) newTokens() (Tokens, error) {
 	rand.Read(tokenBytes)
 	rand.Read(csrftokenBytes)
 
-	Token := fmt.Sprintf("%s:%d", base64.URLEncoding.EncodeToString(tokenBytes), user.ID)
-	CSRFtoken := base64.URLEncoding.EncodeToString(csrftokenBytes)
+	Token := fmt.Sprintf("%s:%d", base64.RawURLEncoding.EncodeToString(tokenBytes), user.ID)
+	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
+	fmt.Println(Token)
+	fmt.Println(len(Token))
 	_, err = tx.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
 	if err != nil {
 		return Tokens{}, err
@@ -195,10 +179,14 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Do stuff
-	if err := user.makeID(); err != nil {
+	var err error
+	user.ID, err = MakeID(18)
+	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
+	user.EncodedID = EncodeID(user.ID)
+	// Encode the user's id
 	if err := user.hashPassword(); err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -210,9 +198,8 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(UserState{
-		ID:       user.ID,
-		Verified: false})
-	return
+		EncodedID: user.EncodedID,
+		Verified:  false})
 }
 
 // Login - Authenticate a user and send them an auth + CSRF token
@@ -248,13 +235,12 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
 	w.Header().Add("Set-Cookie", cookie)
 	w.WriteHeader(201)
-	json.NewEncoder(w).Encode(TokenResponse{
-		CSRFtoken: tokens.CSRFtoken})
+	json.NewEncoder(w).Encode(tokens)
 }
 
 // DeleteAccount - Delete a user's account
 func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 	confirm := r.Header.Get("X-Confirm")
 
 	if len(confirm) > 0 {
@@ -283,7 +269,8 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		tx.Exec("DELETE FROM Tokens WHERE UserID = ?", user)
 		tx.Exec("DELETE FROM Users WHERE ID = ?", user)
 		tx.Commit()
-		w.WriteHeader(204)
+		json.NewEncoder(w).Encode(DeleteConfirm{
+			Message: "Wow, your cock is massive"})
 	} else {
 		// If there isn't a confirmation header, prompt the user for confirmation
 		exists := 0

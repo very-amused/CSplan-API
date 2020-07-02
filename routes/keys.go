@@ -21,7 +21,7 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if err := HTTPValidate(w, keys); err != nil {
 		return
 	}
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -54,7 +54,7 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // GetKeys - Retrieve a user's keypair
 func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 	var keys KeyPair
 	err := DB.Get(&keys, "SELECT TO_BASE64(PublicKey) AS PublicKey, TO_BASE64(PrivateKey) AS PrivateKey, TO_BASE64(PBKDF2salt) as PBKDF2salt FROM CryptoKeys WHERE UserID = ?", user)
 	if err != nil {

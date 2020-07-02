@@ -51,7 +51,7 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if err := HTTPValidate(w, name); err != nil {
 		return
 	}
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -95,7 +95,7 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // GetName - Retrieve a user's name
 func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -139,7 +139,7 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	tx, err := DB.Beginx()
 	if err != nil {
@@ -196,7 +196,7 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // DeleteName - Delete a user's name
 func DeleteName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(int)
+	user := ctx.Value(key("user")).(uint)
 
 	DB.Exec("DELETE FROM Names WHERE UserID = ?", user)
 	w.WriteHeader(204)
