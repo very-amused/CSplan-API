@@ -270,7 +270,7 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		tx.Exec("DELETE FROM Users WHERE ID = ?", user)
 		tx.Commit()
 		json.NewEncoder(w).Encode(DeleteConfirm{
-			Message: "Wow, your cock is massive"})
+			Message: "Your account has been successfully deleted."})
 	} else {
 		// If there isn't a confirmation header, prompt the user for confirmation
 		exists := 0
