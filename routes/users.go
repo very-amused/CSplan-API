@@ -148,8 +148,6 @@ func (user *User) newTokens() (Tokens, error) {
 	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
-	fmt.Println(Token)
-	fmt.Println(len(Token))
 	_, err = tx.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
 	if err != nil {
 		return Tokens{}, err
@@ -180,7 +178,7 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Do stuff
 	var err error
-	user.ID, err = MakeID(18)
+	user.ID = MakeID()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return

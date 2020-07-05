@@ -74,7 +74,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Generate a random 20 digit id
 	var err error
-	list.ID, err = MakeID(20)
+	list.ID = MakeID()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -193,7 +193,7 @@ func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var list TodoList
 
 	// Parse ID from url
-	id, err := parseID(mux.Vars(r)["r"])
+	id, err := DecodeID(mux.Vars(r)["id"])
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Bad Request",

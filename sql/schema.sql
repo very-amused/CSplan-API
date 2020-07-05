@@ -13,13 +13,13 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 
 CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 	UserID bigint unsigned NOT NULL,
-	Token char(63) NOT NULL,
-	CSRFtoken char(44) NOT NULL
+	Token tinytext NOT NULL,
+	CSRFtoken tinytext NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
 	UserID bigint unsigned NOT NULL,
-	Token char(43) NOT NULL,
+	Token tinytext NOT NULL,
 	_Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
 	PRIMARY KEY (UserID) -- Only one deletetoken can be stored for a user at a time
 );
