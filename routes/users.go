@@ -48,9 +48,9 @@ var _N, r, p, keyLen = 32768, 9, 1, 32
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
 	row := DB.QueryRow("SELECT 1 FROM Users WHERE Email = ?", user.Email)
-	var result string
-	err := row.Scan(&result)
-	return err == nil
+	result := 0
+	row.Scan(&result)
+	return result == 1
 }
 
 // user.hashPassword - Hash a password using scrypt
@@ -232,7 +232,6 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
 	w.Header().Add("Set-Cookie", cookie)
-	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(tokens)
 }
 
