@@ -133,6 +133,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 
+	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(TodoResponse{
 		EncodedID: EncodeID(list.ID),
 		Meta: IndexedState{

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 type HTTPHeaders map[string]string
 
 const port = 3000
+const badDataErr = "Data retrieved is not equal to data expected"
 
 // Helper function for managing base64 encoding
 func encode(s string) string {
@@ -37,13 +39,23 @@ var (
 			CryptoKey: encode("EncryptedKey")}}
 	namePatch routes.NamePatch = routes.NamePatch{
 		Username: encode("JDoe2")}
+	list routes.TodoList = routes.TodoList{
+		Title: encode("Sample Todo List"),
+		Items: []routes.TodoItem{
+			routes.TodoItem{
+				Title:       encode("Item 1"),
+				Description: encode("Sample Description")}},
+		Meta: routes.IndexedMeta{
+			CryptoKey: encode("EncryptedKey")}}
+	listPatch routes.TodoPatch = routes.TodoPatch{
+		Title: encode("new title")}
 )
 
 func DoRequest(
 	method string,
 	url string,
 	body interface{},
-	headers map[string]string,
+	headers HTTPHeaders,
 	expectedStatus int) (r *http.Response, e error) {
 	var buffer bytes.Buffer
 	// Encode body into buffer
@@ -81,6 +93,11 @@ func DoRequest(
 	if e == nil && r.StatusCode != expectedStatus {
 		var httpErr routes.Error
 		json.NewDecoder(r.Body).Decode(&httpErr)
+		// Format an error based on status if no response message is given
+		if len(httpErr.Message) == 0 {
+			httpErr.Status = r.StatusCode
+			httpErr.Message = fmt.Sprintf("Expected status %d, received status %d", expectedStatus, httpErr.Status)
+		}
 		e = httpErr
 	}
 	return r, e
@@ -128,16 +145,24 @@ func TestMain(m *testing.M) {
 }
 
 func TestName(t *testing.T) {
+	var rBody routes.Name
 	t.Run("Create Name", func(t *testing.T) {
-		_, err := DoRequest("POST", route("/name"), name, nil, 201)
+		r, err := DoRequest("POST", route("/name"), name, nil, 201)
 		if err != nil {
 			t.Fatal(err.Error())
 		}
+		// Update meta
+		json.NewDecoder(r.Body).Decode(&rBody)
+		name.Meta.Checksum = rBody.Meta.Checksum
 	})
 	t.Run("Get Name", func(t *testing.T) {
-		_, err := DoRequest("GET", route("/name"), nil, nil, 200)
+		r, err := DoRequest("GET", route("/name"), nil, nil, 200)
 		if err != nil {
 			t.Fatal(err.Error())
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, name) {
+			t.Error(badDataErr)
 		}
 	})
 	t.Run("Update Name", func(t *testing.T) {
@@ -145,9 +170,67 @@ func TestName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err.Error())
 		}
+		name.Username = namePatch.Username
+	})
+	t.Run("Updates Correctly Applied", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/name"), nil, nil, 200)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if rBody.Username != name.Username {
+			t.Errorf("Retrieved username '%s' from /name, expected '%s'", rBody.Username, name.Username)
+		}
 	})
 	t.Run("Delete Name", func(t *testing.T) {
 		_, err := DoRequest("DELETE", route("/name"), nil, nil, 204)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+	})
+}
+
+func TestTodo(t *testing.T) {
+	var rBody routes.TodoList
+	t.Run("Create Todo List", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/todos"), list, nil, 201)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		// Update ID + checksum
+		json.NewDecoder(r.Body).Decode(&rBody)
+		list.Meta.Checksum = rBody.Meta.Checksum
+		list.EncodedID = rBody.EncodedID
+	})
+	t.Run("Get Todo List", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/todos/"+list.EncodedID), nil, nil, 200)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, list) {
+			t.Error(badDataErr)
+		}
+	})
+	t.Run("Update Todo List", func(t *testing.T) {
+		_, err := DoRequest("PATCH", route("/todos/"+list.EncodedID), listPatch, nil, 200)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		list.Title = listPatch.Title
+	})
+	t.Run("Updates Correctly Applied", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/todos/"+list.EncodedID), nil, nil, 200)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if rBody.Title != list.Title {
+			t.Errorf("Retrieved title '%s' from /todos/%s, expected '%s'", rBody.Title, list.EncodedID, list.Title)
+		}
+	})
+	t.Run("Delete Todo List", func(t *testing.T) {
+		_, err := DoRequest("DELETE", route("/todos/"+list.EncodedID), nil, nil, 204)
 		if err != nil {
 			t.Fatal(err.Error())
 		}
