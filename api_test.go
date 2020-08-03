@@ -113,13 +113,13 @@ func TestMain(m *testing.M) {
 	// Create test account
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {
-		log.Fatalf("Failed to create test account: %s", err.Error())
+		log.Fatalf("Failed to create test account: %s", err)
 	}
 
 	// Login to test account
 	r, err = DoRequest("POST", route("/login"), user, nil, 200)
 	if err != nil {
-		log.Fatalf("Failed to login to test account: %s", err.Error())
+		log.Fatalf("Failed to login to test account: %s", err)
 	}
 	// Store auth tokens
 	cookieHeader := r.Header.Get("Set-Cookie")
@@ -133,7 +133,7 @@ func TestMain(m *testing.M) {
 	// Delete test account
 	r, err = DoRequest("DELETE", route("/account/delete"), nil, nil, 200)
 	if err != nil {
-		log.Fatalf("Failed to delete test account: %s", err.Error())
+		log.Fatalf("Failed to delete test account: %s", err)
 	}
 	// Repeat the request with confirmation token
 	var dt routes.DeleteToken
@@ -149,7 +149,7 @@ func TestName(t *testing.T) {
 	t.Run("Create Name", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/name"), name, nil, 201)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		// Update meta
 		json.NewDecoder(r.Body).Decode(&rBody)
@@ -158,7 +158,7 @@ func TestName(t *testing.T) {
 	t.Run("Get Name", func(t *testing.T) {
 		r, err := DoRequest("GET", route("/name"), nil, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
 		if !reflect.DeepEqual(rBody, name) {
@@ -168,14 +168,14 @@ func TestName(t *testing.T) {
 	t.Run("Update Name", func(t *testing.T) {
 		_, err := DoRequest("PATCH", route("/name"), namePatch, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		name.Username = namePatch.Username
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
 		r, err := DoRequest("GET", route("/name"), nil, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
 		if rBody.Username != name.Username {
@@ -185,7 +185,7 @@ func TestName(t *testing.T) {
 	t.Run("Delete Name", func(t *testing.T) {
 		_, err := DoRequest("DELETE", route("/name"), nil, nil, 204)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 	})
 }
@@ -195,7 +195,7 @@ func TestTodo(t *testing.T) {
 	t.Run("Create Todo List", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/todos"), list, nil, 201)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		// Update ID + checksum
 		json.NewDecoder(r.Body).Decode(&rBody)
@@ -205,7 +205,7 @@ func TestTodo(t *testing.T) {
 	t.Run("Get Todo List", func(t *testing.T) {
 		r, err := DoRequest("GET", route("/todos/"+list.EncodedID), nil, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
 		if !reflect.DeepEqual(rBody, list) {
@@ -215,14 +215,14 @@ func TestTodo(t *testing.T) {
 	t.Run("Update Todo List", func(t *testing.T) {
 		_, err := DoRequest("PATCH", route("/todos/"+list.EncodedID), listPatch, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		list.Title = listPatch.Title
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
 		r, err := DoRequest("GET", route("/todos/"+list.EncodedID), nil, nil, 200)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
 		if rBody.Title != list.Title {
@@ -232,7 +232,53 @@ func TestTodo(t *testing.T) {
 	t.Run("Delete Todo List", func(t *testing.T) {
 		_, err := DoRequest("DELETE", route("/todos/"+list.EncodedID), nil, nil, 204)
 		if err != nil {
-			t.Fatal(err.Error())
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestPreflight(t *testing.T) {
+	// Expect to succeed options requests for auth level 0 routes with the correct requested method
+	t.Run("Auth Level 0", func(t *testing.T) {
+		_, err := DoRequest("OPTIONS", route("/register"), nil, HTTPHeaders{
+			"Access-Control-Request-Method": "POST"}, 200)
+		if err != nil {
+			t.Error(err)
+		}
+		_, err = DoRequest("OPTIONS", route("/login"), nil, HTTPHeaders{
+			"Access-Control-Request-Method": "POST"}, 200)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	// If no method if specified in the preflight headers,
+	// the API must return a 200 response if the user is authorized for the route
+	t.Run("No Method Specified", func(t *testing.T) {
+		_, err := DoRequest("OPTIONS", route("/register"), nil, nil, 200)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Bad Method", func(t *testing.T) {
+		_, err := DoRequest("OPTIONS", route("/register"), nil, HTTPHeaders{
+			"Access-Control-Request-Method": "PUT"}, 405)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Auth Level 1", func(t *testing.T) {
+		_, err := DoRequest("OPTIONS", route("/todos"), nil, HTTPHeaders{
+			"Access-Control-Request-Method": "GET"}, 200)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Incorrect Creds", func(t *testing.T) {
+		_, err := DoRequest("OPTIONS", route("/todos"), nil, HTTPHeaders{
+			"Access-Control-Request-Method": "GET",
+			"CSRF-Token":                    "INVALID_TOKEN"}, 401)
+		if err != nil {
+			t.Error(err)
 		}
 	})
 }

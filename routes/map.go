@@ -101,6 +101,7 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 	reqMethod := r.Header.Get("Access-Control-Request-Method")
 	reqMethodSupported := false
 	var supportedMethods []string
+
 	for _, method := range methods { // Don't allow access to OPTIONS requests for routes that require greater than normal user auth
 		if Map[fmt.Sprintf("%s:%s", method, r.URL.Path)] == nil || Map[fmt.Sprintf("%s:%s", method, r.URL.Path)].AuthLevel > 1 {
 			continue
@@ -122,7 +123,7 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 	// If the requested method is supported send a 200 response, otherwise send a 405 (method not allowed)
 	if len(supportedMethods) > 0 {
 		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
-		if reqMethodSupported {
+		if reqMethodSupported || len(reqMethod) == 0 { // Allow OPTIONS requests without a specified emthod
 			w.WriteHeader(200)
 		} else {
 			w.WriteHeader(405)
@@ -154,7 +155,7 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
 
-		if reqMethodSupported {
+		if reqMethodSupported || len(reqMethod) == 0 {
 			w.WriteHeader(200)
 		} else {
 			w.WriteHeader(405)
