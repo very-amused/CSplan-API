@@ -94,63 +94,73 @@ func CatchAll(w http.ResponseWriter, r *http.Request) {
 }
 
 var resources = [2]string{"todos", "categories"}
+var methods = [4]string{"GET", "POST", "PATCH", "DELETE"}
 
 // Preflight - Respond to preflight requests
 func Preflight(w http.ResponseWriter, r *http.Request) {
-	method := r.Header.Get("Access-Control-Request-Method")
-	route := Map[method+":"+r.URL.Path]
-	if route != nil {
-		// Run authentication if the route requires it
-		if route.AuthLevel > 0 {
-			_, err := Authenticate(w, r)
-			if err != nil {
-				return
-			}
+	reqMethod := r.Header.Get("Access-Control-Request-Method")
+	reqMethodSupported := false
+	var supportedMethods []string
+	for _, method := range methods { // Don't allow access to OPTIONS requests for routes that require greater than normal user auth
+		if Map[fmt.Sprintf("%s:%s", method, r.URL.Path)] == nil || Map[fmt.Sprintf("%s:%s", method, r.URL.Path)].AuthLevel > 1 {
+			continue
 		}
-
-		// Figure out the allowed methods for the request
-		var methods []string
-		for _, m := range []string{"GET", "POST", "PATCH", "DELETE"} {
-			if Map[m+":"+r.URL.Path] != nil {
-				methods = append(methods, m)
-			}
-		}
-		w.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ","))
-		w.WriteHeader(200) // Send a 200 response if the user is authenticated for the request
-
-	} else { // Make sure to check if the path is referring to a resource by ID
-		for _, resource := range resources {
-			// Validate whether the URL path is requesting the resource
-			if !strings.HasPrefix(r.URL.Path, fmt.Sprintf("/%s/", resource)) {
-				continue
-			}
-			// Run user authentication for the request
-			_, err := Authenticate(w, r)
-			if err != nil {
-				return
-			}
-
-			// Match all supported methods for the resource
-			var methods []string
-			reqMethodSupported := false // We assume that the requested method is not supported until proven otherwise
-			for _, m := range []string{"GET", "POST", "PATCH", "DELETE"} {
-				if Map[fmt.Sprintf("%s:/%s/{id}", m, resource)] != nil {
-					methods = append(methods, m)
-					if m == method {
-						reqMethodSupported = true
-					}
+		supportedMethods = append(supportedMethods, method)
+		if method == reqMethod {
+			route := Map[fmt.Sprintf("%s:%s", method, r.URL.Path)]
+			if route.AuthLevel == 1 {
+				// Run user authentication for the route if it's matched
+				_, err := Authenticate(w, r)
+				if err != nil {
+					return
 				}
 			}
-			w.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ","))
-
-			// If the requested method is supported send a 200 response, otherwise send a 405 (method not allowed)
-			if reqMethodSupported {
-				w.WriteHeader(200)
-			} else {
-				w.WriteHeader(405)
-			}
-			return // Don't go on to the catchall handler
+			reqMethodSupported = true
 		}
-		CatchAll(w, r)
 	}
+
+	// If the requested method is supported send a 200 response, otherwise send a 405 (method not allowed)
+	if len(supportedMethods) > 0 {
+		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
+		if reqMethodSupported {
+			w.WriteHeader(200)
+		} else {
+			w.WriteHeader(405)
+		}
+		return
+	}
+
+	// If matching a route by exact path has failed, try matching it by resource identifier
+	for _, resource := range resources {
+		// Validate whether the URL path is requesting the resource
+		if !strings.HasPrefix(r.URL.Path, fmt.Sprintf("/%s/", resource)) {
+			continue
+		}
+
+		// Run user authentication for the request
+		_, err := Authenticate(w, r)
+		if err != nil {
+			return
+		}
+
+		// Match all supported methods for the resource
+		for _, method := range methods {
+			if Map[fmt.Sprintf("%s:/%s/{id}", method, resource)] != nil {
+				supportedMethods = append(supportedMethods, method)
+				if method == reqMethod {
+					reqMethodSupported = true
+				}
+			}
+		}
+		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
+
+		if reqMethodSupported {
+			w.WriteHeader(200)
+		} else {
+			w.WriteHeader(405)
+		}
+		return // Don't go on to the catchall handler
+	}
+	// If all of the above has failed, send a 404
+	CatchAll(w, r)
 }
