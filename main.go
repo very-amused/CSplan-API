@@ -27,15 +27,8 @@ func loadRoutes(r *mux.Router) {
 		r.HandleFunc(path, route.Handler).Methods(method)
 	}
 
-	// Add a catchall route for otherwise unmatched routes
-	catchall := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		routes.HTTPError(w, routes.Error{
-			Title:   "Not Found",
-			Message: "The requested route could not be found",
-			Status:  404})
-	}
-	r.PathPrefix("/").HandlerFunc(catchall)
+	r.PathPrefix("/").HandlerFunc(routes.Preflight).Methods("OPTIONS")
+	r.PathPrefix("/").HandlerFunc(routes.CatchAll)
 }
 
 func main() {
