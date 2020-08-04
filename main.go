@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/very-amused/CSplan-API/middleware"
+
 	"github.com/very-amused/CSplan-API/routes"
 
 	"github.com/gorilla/mux"
@@ -31,8 +33,13 @@ func loadRoutes(r *mux.Router) {
 	r.PathPrefix("/").HandlerFunc(routes.CatchAll)
 }
 
+func loadMiddleware(r *mux.Router) {
+	r.Use(middleware.SetContentType)
+}
+
 func main() {
 	r := mux.NewRouter()
+	loadMiddleware(r)
 	loadRoutes(r)
 
 	fmt.Println("Starting up CSplan API 🚀")

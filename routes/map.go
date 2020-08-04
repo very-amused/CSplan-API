@@ -21,7 +21,6 @@ type key string
 
 // Handler - Public handler wrapper for each route
 func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	ctx := r.Context()
 	// Handle authentication
 	switch route.AuthLevel {
@@ -95,6 +94,7 @@ func CatchAll(w http.ResponseWriter, r *http.Request) {
 
 var resources = [2]string{"todos", "categories"}
 var methods = [4]string{"GET", "POST", "PATCH", "DELETE"}
+var allowedOrigins = [2]string{"http://localhost:3030", "https://csplan.co"}
 
 // Preflight - Respond to preflight requests
 func Preflight(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +124,14 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 	if len(supportedMethods) > 0 {
 		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
 		if reqMethodSupported || len(reqMethod) == 0 { // Allow OPTIONS requests without a specified emthod
+			origin := r.Header.Get("Origin")
+			for _, allowed := range allowedOrigins {
+				if allowed == origin {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, CSRF-Token")
+					break
+				}
+			}
 			w.WriteHeader(200)
 		} else {
 			w.WriteHeader(405)
@@ -156,6 +164,14 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Methods", strings.Join(supportedMethods, ","))
 
 		if reqMethodSupported || len(reqMethod) == 0 {
+			origin := r.Header.Get("Origin")
+			for _, allowed := range allowedOrigins {
+				if allowed == origin {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, CSRF-Token")
+					break
+				}
+			}
 			w.WriteHeader(200)
 		} else {
 			w.WriteHeader(405)

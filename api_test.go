@@ -259,6 +259,8 @@ func TestPreflight(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	// If a method is specified in the preflight headers
+	// the API must return a 405 response if the method is invalid for the route
 	t.Run("Bad Method", func(t *testing.T) {
 		_, err := DoRequest("OPTIONS", route("/register"), nil, HTTPHeaders{
 			"Access-Control-Request-Method": "PUT"}, 405)
@@ -275,8 +277,7 @@ func TestPreflight(t *testing.T) {
 	})
 	t.Run("Incorrect Creds", func(t *testing.T) {
 		_, err := DoRequest("OPTIONS", route("/todos"), nil, HTTPHeaders{
-			"Access-Control-Request-Method": "GET",
-			"CSRF-Token":                    "INVALID_TOKEN"}, 401)
+			"CSRF-Token": "INVALID_TOKEN"}, 401)
 		if err != nil {
 			t.Error(err)
 		}

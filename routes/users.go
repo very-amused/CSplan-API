@@ -16,8 +16,9 @@ type User struct {
 	ID             uint   `json:"-"`
 	EncodedID      string `json:"id"`
 	Email          string `json:"email" validate:"required,email"`
-	Password       string `json:"password" validate:"required,max=60"`
+	Password       string `json:"password" validate:"required,max=60" db:"-"`
 	HashedPassword []byte `db:"Password"`
+	Verfied        bool   `json:"verified"`
 }
 
 // UserState - State information for a user
@@ -29,7 +30,13 @@ type UserState struct {
 // Tokens - Authentication tokens for a user
 type Tokens struct {
 	Token     string `json:"-"`
-	CSRFtoken string `json:"CSRFtoken"`
+	CSRFtoken string
+}
+
+// LoginState - State information for a user as a response to a login request
+type LoginState struct {
+	Tokens
+	UserState
 }
 
 // DeleteToken - Response to a request for account deletion
@@ -47,10 +54,9 @@ var _N, r, p, keyLen = 32768, 9, 1, 32
 
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
-	row := DB.QueryRow("SELECT 1 FROM Users WHERE Email = ?", user.Email)
-	result := 0
-	row.Scan(&result)
-	return result == 1
+	exists := 0
+	DB.Get(&exists, "SELECT 1 FROM Users WHERE Email = ?", user.Email)
+	return exists == 1
 }
 
 // user.hashPassword - Hash a password using scrypt
@@ -224,6 +230,10 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the user's ID and verification state
+	row := DB.QueryRowx("SELECT ID, Verified FROM Users WHERE Email = ?", user.Email)
+	row.StructScan(&user)
+
 	tokens, err := user.newTokens()
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -232,7 +242,11 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
 	w.Header().Add("Set-Cookie", cookie)
-	json.NewEncoder(w).Encode(tokens)
+	json.NewEncoder(w).Encode(LoginState{
+		tokens,
+		UserState{
+			EncodedID: EncodeID(user.ID),
+			Verified:  user.Verfied}})
 }
 
 // DeleteAccount - Delete a user's account
