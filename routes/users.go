@@ -110,16 +110,11 @@ func (user *User) hasValidPassword() bool {
 }
 
 func (user *User) insert() error {
-	tx, err := DB.Beginx()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 
 	// Ensure that the user id is unique
 	var result int
 	for true {
-		err := tx.Get(&result, "SELECT 1 FROM Users WHERE ID = ?", user.ID)
+		err := DB.Get(&result, "SELECT 1 FROM Users WHERE ID = ?", user.ID)
 		if err != nil {
 			break
 		}
@@ -127,23 +122,14 @@ func (user *User) insert() error {
 	}
 
 	// Insert into db and commit the transaction
-	_, err = tx.Exec("INSERT INTO Users (ID, Email, Password) VALUES (?, ?, ?)",
+	_, err := DB.Exec("INSERT INTO Users (ID, Email, Password) VALUES (?, ?, ?)",
 		user.ID, user.Email, user.HashedPassword)
-	if err != nil {
-		return err
-	}
-	tx.Commit()
-	return nil
+	return err
 }
 
 func (user *User) newTokens() (Tokens, error) {
-	tx, err := DB.Beginx()
-	if err != nil {
-		return Tokens{}, err
-	}
-	defer tx.Rollback()
 	// Get the user's ID from the db for identification purposes
-	tx.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
 	tokenBytes := make([]byte, 32)
 	csrftokenBytes := make([]byte, 32)
@@ -154,15 +140,11 @@ func (user *User) newTokens() (Tokens, error) {
 	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
-	_, err = tx.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
-	if err != nil {
-		return Tokens{}, err
-	}
-	tx.Commit()
+	_, err := DB.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
 
 	return Tokens{
 		Token,
-		CSRFtoken}, nil
+		CSRFtoken}, err
 }
 
 // Register - Create a new account
@@ -240,7 +222,7 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
+	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly; Path=/; SameSite: Lax", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
 	w.Header().Add("Set-Cookie", cookie)
 	json.NewEncoder(w).Encode(LoginState{
 		tokens,
@@ -255,16 +237,9 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	confirm := r.Header.Get("X-Confirm")
 
 	if len(confirm) > 0 {
-		tx, err := DB.Beginx()
-		if err != nil {
-			HTTPInternalServerError(w, err)
-			return
-		}
-		defer tx.Rollback()
-
 		// Verify legitimacy of token
 		var token string
-		tx.Get(&token, "SELECT Token FROM DeleteTokens WHERE UserID = ?", user)
+		DB.Get(&token, "SELECT Token FROM DeleteTokens WHERE UserID = ?", user)
 		if confirm != token {
 			HTTPError(w, Error{
 				Title:   "Forbidden",
@@ -273,13 +248,12 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		tx.Exec("DELETE FROM TodoLists WHERE UserID = ?", user)
-		tx.Exec("DELETE FROM Names WHERE UserID = ?", user)
-		tx.Exec("DELETE FROM CryptoKeys WHERE UserID = ?", user)
-		tx.Exec("DELETE FROM DeleteTokens WHERE UserID = ?", user)
-		tx.Exec("DELETE FROM Tokens WHERE UserID = ?", user)
-		tx.Exec("DELETE FROM Users WHERE ID = ?", user)
-		tx.Commit()
+		DB.Exec("DELETE FROM TodoLists WHERE UserID = ?", user)
+		DB.Exec("DELETE FROM Names WHERE UserID = ?", user)
+		DB.Exec("DELETE FROM CryptoKeys WHERE UserID = ?", user)
+		DB.Exec("DELETE FROM DeleteTokens WHERE UserID = ?", user)
+		DB.Exec("DELETE FROM Tokens WHERE UserID = ?", user)
+		DB.Exec("DELETE FROM Users WHERE ID = ?", user)
 		json.NewEncoder(w).Encode(DeleteConfirm{
 			Message: "Your account has been successfully deleted."})
 	} else {

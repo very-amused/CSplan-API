@@ -35,6 +35,7 @@ func loadRoutes(r *mux.Router) {
 
 func loadMiddleware(r *mux.Router) {
 	r.Use(middleware.SetContentType)
+	r.Use(middleware.CORS)
 }
 
 func main() {

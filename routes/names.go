@@ -53,16 +53,9 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 	user := ctx.Value(key("user")).(uint)
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	// Existence check
 	var exists int
-	err = tx.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
+	err := DB.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
 	if err == nil {
 		HTTPError(w, Error{
 			Title:   "Resource Conflict",
@@ -71,7 +64,7 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tx.Exec("INSERT INTO Names (UserID, FirstName, LastName, Username, CryptoKey) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
+	_, err = DB.Exec("INSERT INTO Names (UserID, FirstName, LastName, Username, CryptoKey) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
 		user, name.FirstName, name.LastName, name.Username, name.Meta.CryptoKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -80,12 +73,11 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Select checksum for encrypted fields
 	var Checksum string
-	err = tx.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
+	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	tx.Commit()
 
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(MetaResponse{
@@ -97,14 +89,8 @@ func AddName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-	}
-	defer tx.Rollback()
-
 	var name Name
-	err = tx.Get(&name, "SELECT TO_BASE64(FirstName) AS FirstName, TO_BASE64(LastName) AS LastName, TO_BASE64(Username) AS Username FROM Names WHERE UserID = ?", user)
+	err := DB.Get(&name, "SELECT TO_BASE64(FirstName) AS FirstName, TO_BASE64(LastName) AS LastName, TO_BASE64(Username) AS Username FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Not Found",
@@ -114,7 +100,7 @@ func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refuse to return a resource without its associated cryptokey
-	err = tx.Get(&name.Meta, "SELECT TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
+	err = DB.Get(&name.Meta, "SELECT TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
 	if err != nil || len(name.Meta.CryptoKey) == 0 {
 		_, err = DB.Exec("DELETE FROM Names WHERE UserID = ?", user)
 		if err != nil {
@@ -126,7 +112,6 @@ func GetName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			Status:  404})
 		return
 	}
-	tx.Commit()
 
 	json.NewEncoder(w).Encode(name)
 }
@@ -140,17 +125,9 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := ctx.Value(key("user")).(uint)
-
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	// Existence check
 	var exists int
-	err = tx.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
+	err := DB.Get(&exists, "SELECT 1 FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPNotFoundError(w)
 		return
@@ -159,19 +136,19 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Only patch the fields that aren't empty
 	errs := make([]error, 4)
 	if len(patch.FirstName) > 0 {
-		_, err = tx.Exec("UPDATE Names SET FirstName = FROM_BASE64(?) WHERE UserID = ?", patch.FirstName, user)
+		_, err = DB.Exec("UPDATE Names SET FirstName = FROM_BASE64(?) WHERE UserID = ?", patch.FirstName, user)
 		errs = append(errs, err)
 	}
 	if len(patch.LastName) > 0 {
-		_, err = tx.Exec("UPDATE Names SET LastName = FROM_BASE64(?) WHERE UserID = ?", patch.LastName, user)
+		_, err = DB.Exec("UPDATE Names SET LastName = FROM_BASE64(?) WHERE UserID = ?", patch.LastName, user)
 		errs = append(errs, err)
 	}
 	if len(patch.Username) > 0 {
-		_, err = tx.Exec("UPDATE Names SET Username = FROM_BASE64(?) WHERE UserID = ?", patch.Username, user)
+		_, err = DB.Exec("UPDATE Names SET Username = FROM_BASE64(?) WHERE UserID = ?", patch.Username, user)
 		errs = append(errs, err)
 	}
 	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = tx.Exec("UPDATE Names SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", patch.Meta.CryptoKey, user)
+		_, err = DB.Exec("UPDATE Names SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", patch.Meta.CryptoKey, user)
 		errs = append(errs, err)
 	}
 	for _, err = range errs {
@@ -182,12 +159,11 @@ func UpdateName(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var Checksum string
-	err = tx.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
+	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(FirstName, LastName, Username)) AS Checksum FROM Names WHERE UserID = ?", user)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	tx.Commit()
 
 	json.NewEncoder(w).Encode(MetaResponse{
 		Meta: State{

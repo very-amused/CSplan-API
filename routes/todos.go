@@ -80,17 +80,10 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	// Enusre the list's ID's uniqueness
 	var exists int
 	for true {
-		err := tx.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ?", list.ID)
+		err := DB.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ?", list.ID)
 		if err != nil {
 			break
 		}
@@ -99,7 +92,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Figure out list index
 	var max, index uint
-	err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		index = 0
 	} else if max == 255 {
@@ -117,7 +110,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	m, err := json.Marshal(list.Items)
 	encoded := string(m)
 
-	_, err = tx.Exec("INSERT INTO TodoLists (ID, UserID, Title, Items, _Index, CryptoKey) VALUES (?, ?, FROM_BASE64(?), ?, ?, FROM_BASE64(?))",
+	_, err = DB.Exec("INSERT INTO TodoLists (ID, UserID, Title, Items, _Index, CryptoKey) VALUES (?, ?, FROM_BASE64(?), ?, ?, FROM_BASE64(?))",
 		list.ID, user, list.Title, encoded, index, list.Meta.CryptoKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -126,13 +119,11 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Get checksum
 	var Checksum string
-	err = tx.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
+	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	tx.Commit()
-
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(TodoResponse{
 		EncodedID: EncodeID(list.ID),
@@ -145,20 +136,13 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	var max uint
-	err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	err := DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		json.NewEncoder(w).Encode(make([]TodoList, 0))
 		return
 	}
-	rows, err := tx.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
+	rows, err := DB.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -183,7 +167,6 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		lists[list.Meta.Index] = list
 		lists[list.Meta.Index].EncodedID = EncodeID(list.ID)
 	}
-	tx.Commit()
 
 	json.NewEncoder(w).Encode(lists)
 }
@@ -254,16 +237,9 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	// Existence + ownership check
 	exists := 0
-	tx.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?",
+	DB.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?",
 		id, user)
 	if exists != 1 {
 		HTTPNotFoundError(w)
@@ -273,7 +249,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Patch only the fields specified in the request
 	errs := make([]error, 4)
 	if len(patch.Title) > 0 {
-		_, err = tx.Exec("UPDATE TodoLists SET Title = FROM_BASE64(?) WHERE ID = ?", patch.Title, id)
+		_, err = DB.Exec("UPDATE TodoLists SET Title = FROM_BASE64(?) WHERE ID = ?", patch.Title, id)
 		errs = append(errs, err)
 	}
 	if patch.Items != nil {
@@ -283,11 +259,11 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		errs = append(errs, err)
-		_, err = tx.Exec("UPDATE TodoLists SET Items = ? WHERE ID = ?", encoded, id)
+		_, err = DB.Exec("UPDATE TodoLists SET Items = ? WHERE ID = ?", encoded, id)
 		errs = append(errs, err)
 	}
 	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = tx.Exec("UPDATE TodoLists SET CryptoKey = FROM_BASE64(?) WHERE ID = ?", patch.Meta.CryptoKey, id)
+		_, err = DB.Exec("UPDATE TodoLists SET CryptoKey = FROM_BASE64(?) WHERE ID = ?", patch.Meta.CryptoKey, id)
 		errs = append(errs, err)
 	}
 	// Handle any errors encountered during the patch
@@ -300,7 +276,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Get state information
 	var state IndexedState
-	err = tx.Get(&state, "SELECT SHA(CONCAT(Title, Items)) AS Checksum, _Index FROM TodoLists WHERE ID = ?", id)
+	err = DB.Get(&state, "SELECT SHA(CONCAT(Title, Items)) AS Checksum, _Index FROM TodoLists WHERE ID = ?", id)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -312,7 +288,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if n != o {
 		// Create an array of ids for all todos belonging to the user
 		var max int
-		err = tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+		err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 		if err != nil {
 			HTTPInternalServerError(w, err)
 			return
@@ -321,7 +297,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		// Copy
 		todos := make([]uint, max+1)
 		for i := 0; i <= max; i++ {
-			err = tx.Get(&todos[i], "SELECT ID FROM TodoLists WHERE _Index = ?", i)
+			err = DB.Get(&todos[i], "SELECT ID FROM TodoLists WHERE _Index = ?", i)
 			if err != nil {
 				HTTPInternalServerError(w, err)
 				return
@@ -329,7 +305,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Substitute
-		_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, todos[o])
+		_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, todos[o])
 		if err != nil {
 			HTTPInternalServerError(w, err)
 			return
@@ -339,7 +315,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		if n > o {
 			// (o, n]
 			for i := o + 1; i <= n; i++ {
-				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, todos[i])
+				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, todos[i])
 				if err != nil {
 					HTTPInternalServerError(w, err)
 					return
@@ -348,7 +324,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		} else if n < o {
 			// (n, o]
 			for i := n + 1; i <= o; i++ {
-				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, todos[i-1])
+				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, todos[i-1])
 				if err != nil {
 					HTTPInternalServerError(w, err)
 					return
@@ -357,7 +333,6 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 		state.Index = n
 	}
-	tx.Commit()
 
 	json.NewEncoder(w).Encode(TodoResponse{
 		EncodedID: EncodeID(id),
@@ -376,26 +351,18 @@ func DeleteTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := DB.Beginx()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-	defer tx.Rollback()
-
 	// Select useful information that will be used for updating indexes later
 	var max, index uint
-	tx.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
-	tx.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	DB.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 
-	results, _ := tx.Exec("DELETE FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	results, _ := DB.Exec("DELETE FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 	if affected, _ := results.RowsAffected(); affected > 0 {
 		// Update indexes to be accurate after the delete operation
 		for i := index + 1; i <= max; i++ {
-			tx.Exec("UPDATE TodoLists SET _Index = ? WHERE _Index = ? AND UserID = ?", i-1, i, user)
+			DB.Exec("UPDATE TodoLists SET _Index = ? WHERE _Index = ? AND UserID = ?", i-1, i, user)
 		}
 	}
-	tx.Commit()
 
 	w.WriteHeader(204)
 }

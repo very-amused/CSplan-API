@@ -18,20 +18,19 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var keys KeyPair
 	json.NewDecoder(r.Body).Decode(&keys)
 	// Validate and decode keys
+	var err error
 	if err := HTTPValidate(w, keys); err != nil {
 		return
 	}
 	user := ctx.Value(key("user")).(uint)
 
-	tx, err := DB.Beginx()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 	}
-	defer tx.Rollback()
 
 	// Existence check
 	var exists int
-	err = tx.Get(&exists, "SELECT 1 FROM CryptoKeys WHERE UserID = ?", user)
+	err = DB.Get(&exists, "SELECT 1 FROM CryptoKeys WHERE UserID = ?", user)
 	if err == nil {
 		HTTPError(w, Error{
 			Title:   "Resource Conflict",
@@ -40,13 +39,12 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tx.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PrivateKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
+	_, err = DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PrivateKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
 		user, keys.PublicKey, keys.PrivateKey, keys.PBKDF2salt)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	tx.Commit()
 
 	// No checksum is needed for this particular resource
 	w.WriteHeader(204)

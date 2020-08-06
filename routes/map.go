@@ -42,6 +42,9 @@ func init() {
 	Map["POST:/login"] = &Route{
 		handler:   Login,
 		AuthLevel: 0}
+	Map["GET:/whoami"] = &Route{
+		handler:   WhoAmI,
+		AuthLevel: 1}
 	Map["DELETE:/account/delete"] = &Route{
 		handler:   DeleteAccount,
 		AuthLevel: 1}
@@ -108,14 +111,6 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 		}
 		supportedMethods = append(supportedMethods, method)
 		if method == reqMethod {
-			route := Map[fmt.Sprintf("%s:%s", method, r.URL.Path)]
-			if route.AuthLevel == 1 {
-				// Run user authentication for the route if it's matched
-				_, err := Authenticate(w, r)
-				if err != nil {
-					return
-				}
-			}
 			reqMethodSupported = true
 		}
 	}
@@ -144,12 +139,6 @@ func Preflight(w http.ResponseWriter, r *http.Request) {
 		// Validate whether the URL path is requesting the resource
 		if !strings.HasPrefix(r.URL.Path, fmt.Sprintf("/%s/", resource)) {
 			continue
-		}
-
-		// Run user authentication for the request
-		_, err := Authenticate(w, r)
-		if err != nil {
-			return
 		}
 
 		// Match all supported methods for the resource
