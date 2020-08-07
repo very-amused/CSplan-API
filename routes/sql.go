@@ -33,4 +33,5 @@ func init() {
 	DB.MapperFunc(func(s string) string {
 		return s
 	}) // Disable automatic mapping of column names to lowercase (both columns and structs are in PascalCase)
+	DB.SetMaxIdleConns(1)
 }

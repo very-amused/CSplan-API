@@ -213,8 +213,7 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the user's ID and verification state
-	row := DB.QueryRowx("SELECT ID, Verified FROM Users WHERE Email = ?", user.Email)
-	row.StructScan(&user)
+	DB.Get(&user, "SELECT ID, Verified FROM Users WHERE Email = ?", user.Email)
 
 	tokens, err := user.newTokens()
 	if err != nil {

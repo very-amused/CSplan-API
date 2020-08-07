@@ -143,6 +143,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := DB.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
+	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -191,6 +192,7 @@ func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var encoded string
 	rows, err := DB.Query("SELECT TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ? AND UserID = ?",
 		list.ID, user)
+	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
