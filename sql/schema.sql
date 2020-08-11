@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Names (
 	FirstName tinyblob NOT NULL DEFAULT '',
 	LastName tinyblob NOT NULL DEFAULT '',
 	Username tinyblob NOT NULL DEFAULT '',
-	CryptoKey blob NOT NULL,
+	CryptoKey tinyblob NOT NULL,
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.TodoLists (
 	-- Items are stored as json with each value as encrypted base64 in order to preserve structure
 	Items json NOT NULL DEFAULT '[]',
 	_Index tinyint unsigned NOT NULL,
-	CryptoKey blob NOT NULL,
+	CryptoKey tinyblob NOT NULL,
 	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );

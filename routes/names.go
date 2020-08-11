@@ -8,29 +8,29 @@ import (
 
 // Name - Names for a user
 type Name struct {
-	FirstName string `json:"firstname" validate:"max=255,omitempty,base64"`
-	LastName  string `json:"lastname" validate:"max=255,omitempty,base64"`
-	Username  string `json:"username" validate:"max=255,omitempty,base64"`
+	FirstName string `json:"firstname" validate:"omitempty,base64,max=255"`
+	LastName  string `json:"lastname" validate:"max=255,omitempty,base64,max=255"`
+	Username  string `json:"username" validate:"max=255,omitempty,base64,max=255"`
 	Meta      Meta   `json:"meta" validate:"required"`
 }
 
 // Meta - Full meta for all encrypted fields of a resource
 type Meta struct {
-	CryptoKey string `json:"cryptoKey" validate:"base64"`
+	CryptoKey string `json:"cryptoKey" validate:"base64,max=255"`
 	Checksum  string `json:"checksum"`
 }
 
 // NamePatch - Same as Names, except without required cryptokey
 type NamePatch struct {
-	FirstName string    `json:"firstname" validate:"max=255,omitempty,base64"`
-	LastName  string    `json:"lastname" validate:"max=255,omitempty,base64"`
-	Username  string    `json:"username" validate:"max=255,omitempty,base64"`
+	FirstName string    `json:"firstname" validate:"omitempty,base64,max=255"`
+	LastName  string    `json:"lastname" validate:"omitempty,base64,max=255"`
+	Username  string    `json:"username" validate:"omitempty,base64,max=255"`
 	Meta      MetaPatch `json:"meta"`
 }
 
 // MetaPatch - Patch to update a resource's meta
 type MetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64"`
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
 }
 
 // MetaResponse - Response to creation or update of a name
