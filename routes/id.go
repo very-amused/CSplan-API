@@ -23,5 +23,8 @@ func EncodeID(id uint) (encoded string) {
 // DecodeID - Decode a base64 string as an ID
 func DecodeID(encoded string) (id uint, e error) {
 	bytes, err := base64.RawURLEncoding.DecodeString(encoded)
+	if len(bytes) < 8 {
+		bytes = make([]byte, 8) // Ensure there's enough bytes to not choke on Uint64 conversion
+	}
 	return uint(binary.LittleEndian.Uint64(bytes)), err
 }

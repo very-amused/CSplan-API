@@ -5,7 +5,7 @@ SET GLOBAL event_scheduler = ON;
 CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	ID bigint unsigned NOT NULL,
 	Email varchar(255) NOT NULL,
-	Password binary(48),
+	Password binary(48) NOT NULL,
 	Verified boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (ID),
 	UNIQUE (Email)
@@ -67,11 +67,19 @@ CREATE TABLE IF NOT EXISTS CSplanGo.TodoLists (
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
-CREATE TABLE IF NOT EXISTS CSplanGo.Categories (
+CREATE TABLE IF NOT EXISTS CSplanGo.NoList (
+	UserID bigint unsigned NOT NULL,
+	Items json NOT NULL DEFAULT '[]',
+	CryptoKey tinyblob NOT NULL,
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
+
+CREATE TABLE IF NOT EXISTS CSplanGo.Tags (
 	ID bigint unsigned NOT NULL,
 	UserID bigint unsigned NOT NULL,
-	Title tinyblob NOT NULL DEFAULT '',
-	Color char(6) NOT NULL DEFAULT 'FFFFFF',
+	Name tinyblob NOT NULL DEFAULT '',
+	Color tinyblob NOT NULL DEFAULT '',
+	CryptoKey tinyblob NOT NULL,
 	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );

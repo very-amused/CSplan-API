@@ -73,12 +73,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
 	// Generate a random 20 digit id
-	var err error
 	list.ID = MakeID()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
 
 	// Enusre the list's ID's uniqueness
 	var exists int
@@ -92,7 +87,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Figure out list index
 	var max, index uint
-	err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	err := DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		index = 0
 	} else if max == 255 {

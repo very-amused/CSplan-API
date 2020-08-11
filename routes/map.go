@@ -84,6 +84,22 @@ func init() {
 	Map["DELETE:/todos/{id}"] = &Route{
 		handler:   DeleteTodo,
 		AuthLevel: 1}
+
+	Map["POST:/tags"] = &Route{
+		handler:   AddTag,
+		AuthLevel: 1}
+	Map["GET:/tags"] = &Route{
+		handler:   GetTags,
+		AuthLevel: 1}
+	Map["GET:/tags/{id}"] = &Route{
+		handler:   GetTag,
+		AuthLevel: 1}
+	Map["PATCH:/tags/{id}"] = &Route{
+		handler:   UpdateTag,
+		AuthLevel: 1}
+	Map["DELETE:/tags/{id}"] = &Route{
+		handler:   DeleteTag,
+		AuthLevel: 1}
 }
 
 // CatchAll - Add a catchall route for otherwise unmatched routes
