@@ -28,18 +28,20 @@ func encode(s string) string {
 var (
 	client *http.Client
 	auth   routes.Tokens
-	user   routes.User = routes.User{
+	user   = routes.User{
 		Email:    "user@test.com",
 		Password: "TestPassword"}
-	name routes.Name = routes.Name{
+
+	name = routes.Name{
 		FirstName: encode("John"),
 		LastName:  encode("Doe"),
 		Username:  encode("JDoe"),
 		Meta: routes.Meta{
 			CryptoKey: encode("EncryptedKey")}}
-	namePatch routes.NamePatch = routes.NamePatch{
+	namePatch = routes.NamePatch{
 		Username: encode("JDoe2")}
-	list routes.TodoList = routes.TodoList{
+
+	list = routes.TodoList{
 		Title: encode("Sample Todo List"),
 		Items: []routes.TodoItem{
 			routes.TodoItem{
@@ -47,8 +49,18 @@ var (
 				Description: encode("Sample Description")}},
 		Meta: routes.IndexedMeta{
 			CryptoKey: encode("EncryptedKey")}}
-	listPatch routes.TodoPatch = routes.TodoPatch{
+	listPatch = routes.TodoPatch{
 		Title: encode("new title")}
+
+	tag = routes.Tag{
+		Name:  encode("Sample Tag"),
+		Color: encode("#444"),
+		Meta: routes.TagMeta{
+			CryptoKey: encode("EncryptedKey")}}
+	tagPatch = routes.TagPatch{
+		Name: encode("New Name"),
+		Meta: routes.TagMetaPatch{
+			CryptoKey: encode("New Key")}}
 )
 
 func DoRequest(
@@ -237,6 +249,55 @@ func TestTodo(t *testing.T) {
 	})
 }
 
+func TestTags(t *testing.T) {
+	var rBody routes.Tag
+	t.Run("Create Tag", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/tags"), tag, nil, 201)
+		if err != nil {
+			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		tag.Meta.Checksum = rBody.Meta.Checksum
+		tag.EncodedID = rBody.EncodedID
+	})
+	t.Run("Get Tag", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/tags/"+tag.EncodedID), nil, nil, 200)
+		if err != nil {
+			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, tag) {
+			t.Error(badDataErr)
+		}
+	})
+	t.Run("Update Tag", func(t *testing.T) {
+		r, err := DoRequest("PATCH", route("/tags/"+tag.EncodedID), tagPatch, nil, 200)
+		if err != nil {
+			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		tag.Name = tagPatch.Name
+		tag.Meta.CryptoKey = tagPatch.Meta.CryptoKey
+		tag.Meta.Checksum = rBody.Meta.Checksum
+	})
+	t.Run("Updates Correctly Applied", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/tags/"+tag.EncodedID), nil, nil, 200)
+		if err != nil {
+			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, tag) {
+			t.Error(badDataErr)
+		}
+	})
+	t.Run("Delete Tag", func(t *testing.T) {
+		_, err := DoRequest("DELETE", route("/tags/"+tag.EncodedID), nil, nil, 204)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
 func TestPreflight(t *testing.T) {
 	// Expect to succeed options requests for auth level 0 routes with the correct requested method
 	t.Run("Auth Level 0", func(t *testing.T) {
@@ -264,20 +325,6 @@ func TestPreflight(t *testing.T) {
 	t.Run("Bad Method", func(t *testing.T) {
 		_, err := DoRequest("OPTIONS", route("/register"), nil, HTTPHeaders{
 			"Access-Control-Request-Method": "PUT"}, 405)
-		if err != nil {
-			t.Error(err)
-		}
-	})
-	t.Run("Auth Level 1", func(t *testing.T) {
-		_, err := DoRequest("OPTIONS", route("/todos"), nil, HTTPHeaders{
-			"Access-Control-Request-Method": "GET"}, 200)
-		if err != nil {
-			t.Error(err)
-		}
-	})
-	t.Run("Incorrect Creds", func(t *testing.T) {
-		_, err := DoRequest("OPTIONS", route("/todos"), nil, HTTPHeaders{
-			"CSRF-Token": "INVALID_TOKEN"}, 401)
 		if err != nil {
 			t.Error(err)
 		}

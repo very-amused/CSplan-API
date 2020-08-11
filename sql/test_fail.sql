@@ -5,4 +5,5 @@
 SELECT ID INTO @UserID FROM CSplanGo.Users WHERE Email = "user@test.com";
 DELETE FROM CSplanGo.Names WHERE UserID = @UserID;
 DELETE FROM CSplanGo.TodoLists WHERE UserID = @UserID;
+DELETE FROM CSplanGo.Tags WHERE UserID = @UserID;
 DELETE FROM CSplanGo.Users WHERE ID = @UserID;
