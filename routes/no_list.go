@@ -6,9 +6,15 @@ import (
 	"net/http"
 )
 
-// NoListCreate - The creation of a nolist collection should be automatically accomplished at register-time,
+// NoList - A specific form of todo list designed to hold any items that do not belong to a parent list
+type NoList struct {
+	Items []TodoItem `json:"items" validate:"required,dive"`
+	Meta  MetaPatch  `json:"meta"`
+}
+
+// CreateNoList - The creation of a nolist collection should be automatically accomplished at register-time,
 // but a route is specified here as a manual failsafe (no body POST)
-func NoListCreate(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func CreateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
 	// Check for resource conflicts
@@ -33,64 +39,68 @@ func NoListCreate(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-/// Key operations for the user's nolist collection are handled separately,
-/// due to the lack of specificity of which request to add items a key would be bundled with
-
-// NoListAddKey - Add a cryptokey to a nolist collection
-func NoListAddKey(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+// UpdateNoList - Update the items or key of a nolist collection
+func UpdateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
-	var meta Meta
-	json.NewDecoder(r.Body).Decode(&meta)
-	if err := HTTPValidate(w, meta); err != nil {
+	var patch NoList
+	json.NewDecoder(r.Body).Decode(&patch)
+	if err := HTTPValidate(w, patch); err != nil {
 		return
 	}
 
-	// Check for resource conflicts
-	var key string
-	DB.Get(&key, "SELECT CryptoKey FROM NoList WHERE UserID = ?", user)
-	if len(key) > 0 {
-		HTTPError(w, Error{
-			Title:   "Resource Conflict",
-			Message: "This no list collection already has a key set. To update this key use PATCH:/nolist/key, to delete this key use DELETE:/nolist/key.",
-			Status:  409})
+	// Marshal the items sent
+	marshalled, err := json.Marshal(patch.Items)
+	if err != nil {
+		HTTPInternalServerError(w, err)
 		return
 	}
+	encoded := string(marshalled)
 
-	// Set the user's nolist cryptokey and retrieve the checksum
-	DB.Exec("UPDATE NoList SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", meta.CryptoKey, user)
+	// Update the collection's items (if included in the request)
+	if len(patch.Items) > 0 {
+		_, err = DB.Exec("UPDATE NoList SET Items = ? WHERE UserID = ?", encoded, user)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+	}
+	if len(patch.Meta.CryptoKey) > 0 {
+		_, err = DB.Exec("UPDATE NoList SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", patch.Meta.CryptoKey, user)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
+	}
+
+	// Retrieve the updated checksum
 	var checksum string
 	DB.Get(&checksum, "SELECT SHA(CONCAT(Items, CryptoKey)) FROM NoList WHERE UserID = ?", user)
 
-	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(MetaResponse{
 		Meta: State{
 			Checksum: checksum}})
 }
 
-// NoListUpdateKey - Update the cryptokey associated with a nolist collection
-func NoListUpdateKey(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+// GetNoList - Retrieve a nolist collection
+func GetNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
-	var meta Meta
-	json.NewDecoder(r.Body).Decode(&meta)
-	if err := HTTPValidate(w, meta); err != nil {
-		return
-	}
+	var nolist NoList
 
-	// Check for resource conflicts
-	var key string
-	DB.Get(&key, "SELECT CryptoKey FROM NoList WHERE UserID = ?", user)
-	if len(key) == 0 {
+	rows, err := DB.Query("SELECT Items, TO_BASE64(CryptoKey), SHA(CONCAT(Items, CryptoKey)) FROM NoList WHERE UserID = ?", user)
+	defer rows.Close()
+	if !rows.Next() {
 		HTTPNotFoundError(w)
 		return
+	} else if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+	var encoded string
+	rows.Scan(&encoded, &nolist.Meta.CryptoKey, &nolist.Meta.Checksum)
+	err = json.Unmarshal([]byte(encoded), &nolist.Items)
+	if err != nil {
+		HTTPInternalServerError(w, err)
 	}
 
-	// Update the user's nolist cryptokey and retrieve the checksum
-	DB.Exec("UPDATE NoList SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", meta.CryptoKey, user)
-	var checksum string
-	DB.Get(&checksum, "SELECT SHA(CONCAT(Items, CryptoKey)) FROM NoList WHERE UserID = ?", user)
-
-	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(MetaResponse{
-		Meta: State{
-			Checksum: checksum}})
+	json.NewEncoder(w).Encode(nolist)
 }

@@ -22,7 +22,7 @@ type TodoList struct {
 type TodoItem struct {
 	Title       string   `json:"title" validate:"required,base64"`
 	Description string   `json:"description" validate:"required,base64"`
-	Tags        []string `json:"tags" validate:"required,dive,base64"`
+	Tags        []string `json:"tags" validate:"omitempty,dive,base64"`
 }
 
 // IndexedMeta - Full meta for all encrypted fields with order

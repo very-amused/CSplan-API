@@ -31,6 +31,7 @@ type NamePatch struct {
 // MetaPatch - Patch to update a resource's meta
 type MetaPatch struct {
 	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
+	Checksum  string `json:"checksum"`
 }
 
 // MetaResponse - Response to creation or update of a resource where only state is the appropriate response

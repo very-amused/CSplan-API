@@ -102,13 +102,13 @@ func init() {
 		AuthLevel: 1}
 
 	Map["POST:/nolist"] = &Route{
-		handler:   NoListCreate,
+		handler:   CreateNoList,
 		AuthLevel: 1}
-	Map["POST:/nolist/key"] = &Route{
-		handler:   NoListAddKey,
+	Map["PATCH:/nolist"] = &Route{
+		handler:   UpdateNoList,
 		AuthLevel: 1}
-	Map["PATCH:/nolist/key"] = &Route{
-		handler:   NoListUpdateKey,
+	Map["GET:/nolist"] = &Route{
+		handler:   GetNoList,
 		AuthLevel: 1}
 }
 
