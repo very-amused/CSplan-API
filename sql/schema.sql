@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS CSplanGo.TodoLists (
 CREATE TABLE IF NOT EXISTS CSplanGo.NoList (
 	UserID bigint unsigned NOT NULL,
 	Items json NOT NULL DEFAULT '[]',
-	CryptoKey tinyblob NOT NULL,
+	CryptoKey tinyblob NOT NULL DEFAULT '',
+	PRIMARY KEY (UserID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 

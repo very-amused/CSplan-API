@@ -100,6 +100,16 @@ func init() {
 	Map["DELETE:/tags/{id}"] = &Route{
 		handler:   DeleteTag,
 		AuthLevel: 1}
+
+	Map["POST:/nolist"] = &Route{
+		handler:   NoListCreate,
+		AuthLevel: 1}
+	Map["POST:/nolist/key"] = &Route{
+		handler:   NoListAddKey,
+		AuthLevel: 1}
+	Map["PATCH:/nolist/key"] = &Route{
+		handler:   NoListUpdateKey,
+		AuthLevel: 1}
 }
 
 // CatchAll - Add a catchall route for otherwise unmatched routes

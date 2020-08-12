@@ -110,10 +110,9 @@ func (user *User) hasValidPassword() bool {
 }
 
 func (user *User) insert() error {
-
 	// Ensure that the user id is unique
 	var result int
-	for true {
+	for {
 		err := DB.Get(&result, "SELECT 1 FROM Users WHERE ID = ?", user.ID)
 		if err != nil {
 			break
@@ -121,9 +120,14 @@ func (user *User) insert() error {
 		user.ID++
 	}
 
-	// Insert into db and commit the transaction
+	// Insert into db
 	_, err := DB.Exec("INSERT INTO Users (ID, Email, Password) VALUES (?, ?, ?)",
 		user.ID, user.Email, user.HashedPassword)
+	if err != nil {
+		return err
+	}
+	// Automatically create a NoList collection for the user
+	_, err = DB.Exec("INSERT INTO NoList (UserID) VALUES (?)", user.ID)
 	return err
 }
 

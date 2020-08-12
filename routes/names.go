@@ -16,7 +16,7 @@ type Name struct {
 
 // Meta - Full meta for all encrypted fields of a resource
 type Meta struct {
-	CryptoKey string `json:"cryptoKey" validate:"base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=255"`
 	Checksum  string `json:"checksum"`
 }
 
@@ -33,7 +33,7 @@ type MetaPatch struct {
 	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
 }
 
-// MetaResponse - Response to creation or update of a name
+// MetaResponse - Response to creation or update of a resource where only state is the appropriate response
 type MetaResponse struct {
 	Meta State `json:"meta"`
 }

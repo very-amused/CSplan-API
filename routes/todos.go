@@ -20,9 +20,9 @@ type TodoList struct {
 
 // TodoItem - A singular todo item belonging to a parent TodoList
 type TodoItem struct {
-	Title       string `json:"title" validate:"required,base64"`
-	Description string `json:"description" validate:"required,base64"`
-	Category    string `json:"category" validate:"omitempty,base64"`
+	Title       string   `json:"title" validate:"required,base64"`
+	Description string   `json:"description" validate:"required,base64"`
+	Tags        []string `json:"tags" validate:"required,dive,base64"`
 }
 
 // IndexedMeta - Full meta for all encrypted fields with order
