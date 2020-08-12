@@ -69,6 +69,12 @@ var (
 				Description: encode("Sample Description")}},
 		Meta: routes.MetaPatch{
 			CryptoKey: encode("EncryptedKey")}}
+	nolistItemPatch = []routes.TodoItem{
+		routes.TodoItem{
+			Title:       encode("New Item"),
+			Description: encode("This one is new")}}
+	nolistMetaPatch = routes.MetaPatch{
+		CryptoKey: encode("New Key")}
 )
 
 func DoRequest(
@@ -128,7 +134,6 @@ func route(path string) string {
 }
 
 func TestMain(m *testing.M) {
-	fmt.Println("This is an h")
 	// Initialize http client
 	client = &http.Client{}
 	// Create test account
@@ -331,27 +336,22 @@ func TestNoList(t *testing.T) {
 		}
 	})
 	t.Run("Update Items", func(t *testing.T) {
-		newItems := []routes.TodoItem{
-			routes.TodoItem{
-				Title:       encode("New Item"),
-				Description: encode("This one is new")}}
 		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
-			Items: newItems}, nil, 200)
+			Items: nolistItemPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
 		} else {
-			nolist.Items = newItems
+			nolist.Items = nolistItemPatch
 		}
 	})
 	t.Run("Update CryptoKey", func(t *testing.T) {
-		newMeta := routes.MetaPatch{
-			CryptoKey: encode("New Key")}
+
 		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
-			Meta: newMeta}, nil, 200)
+			Meta: nolistMetaPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
 		} else {
-			nolist.Meta = newMeta
+			nolist.Meta = nolistMetaPatch
 		}
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
