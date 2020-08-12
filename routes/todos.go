@@ -27,7 +27,7 @@ type TodoItem struct {
 
 // IndexedMeta - Full meta for all encrypted fields with order
 type IndexedMeta struct {
-	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=700"`
 	Checksum  string `json:"checksum"`
 	Index     uint   `json:"index" db:"_Index"`
 }
@@ -53,7 +53,7 @@ type TodoPatch struct {
 
 // IndexedMetaPatch - Same as MetaPatch but with index
 type IndexedMetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=700"`
 	Index     uint   `json:"index" db:"_Index"`
 }
 

@@ -19,7 +19,7 @@ type Tag struct {
 
 // TagMeta - CryptoKey and checksum for tag creation
 type TagMeta struct {
-	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=700"`
 	Checksum  string `json:"checksum"`
 }
 
@@ -36,7 +36,7 @@ type TagResponse struct {
 
 // TagMetaPatch - Patch for tag meta + checksum
 type TagMetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=700"`
 	Checksum  string `json:"checksum"`
 }
 

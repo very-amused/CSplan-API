@@ -16,7 +16,7 @@ type Name struct {
 
 // Meta - Full meta for all encrypted fields of a resource
 type Meta struct {
-	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=700"`
 	Checksum  string `json:"checksum"`
 }
 
@@ -30,7 +30,7 @@ type NamePatch struct {
 
 // MetaPatch - Patch to update a resource's meta
 type MetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=255"`
+	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=700"`
 	Checksum  string `json:"checksum"`
 }
 
