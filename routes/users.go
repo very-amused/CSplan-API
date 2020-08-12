@@ -251,12 +251,24 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		DB.Exec("DELETE FROM TodoLists WHERE UserID = ?", user)
-		DB.Exec("DELETE FROM Names WHERE UserID = ?", user)
-		DB.Exec("DELETE FROM CryptoKeys WHERE UserID = ?", user)
-		DB.Exec("DELETE FROM DeleteTokens WHERE UserID = ?", user)
-		DB.Exec("DELETE FROM Tokens WHERE UserID = ?", user)
-		DB.Exec("DELETE FROM Users WHERE ID = ?", user)
+		// Notify the user with a 500 response if any of the delete queries fail
+		// If this ever happens in production, something has gone horribly wrong
+		queries := []string{
+			"DELETE FROM TodoLists WHERE UserID = ?",
+			"DELETE FROM Names WHERE UserID = ?",
+			"DELETE FROM CryptoKeys WHERE UserID = ?",
+			"DELETE FROM DeleteTokens WHERE UserID = ?",
+			"DELETE FROM Tokens WHERE UserID = ?",
+			"DELETE FROM NoList WHERE UserID = ?",
+			"DELETE FROM Users WHERE ID = ?"}
+		for _, query := range queries {
+			_, err := DB.Exec(query, user)
+			if err != nil {
+				HTTPInternalServerError(w, err)
+				return
+			}
+		}
+
 		json.NewEncoder(w).Encode(DeleteConfirm{
 			Message: "Your account has been successfully deleted."})
 	} else {

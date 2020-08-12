@@ -61,6 +61,14 @@ var (
 		Name: encode("New Name"),
 		Meta: routes.TagMetaPatch{
 			CryptoKey: encode("New Key")}}
+
+	nolist = routes.NoList{
+		Items: []routes.TodoItem{
+			routes.TodoItem{
+				Title:       encode("Nolist item"),
+				Description: encode("Sample Description")}},
+		Meta: routes.MetaPatch{
+			CryptoKey: encode("EncryptedKey")}}
 )
 
 func DoRequest(
@@ -120,6 +128,7 @@ func route(path string) string {
 }
 
 func TestMain(m *testing.M) {
+	fmt.Println("This is an h")
 	// Initialize http client
 	client = &http.Client{}
 	// Create test account
@@ -152,6 +161,9 @@ func TestMain(m *testing.M) {
 	json.NewDecoder(r.Body).Decode(&dt)
 	r, err = DoRequest("DELETE", route("/account/delete"), nil, HTTPHeaders{
 		"X-Confirm": dt.Token}, 200)
+	if err != nil {
+		log.Fatalf("Failed to delete test account: %s", err)
+	}
 
 	os.Exit(exit)
 }
@@ -294,6 +306,63 @@ func TestTags(t *testing.T) {
 		_, err := DoRequest("DELETE", route("/tags/"+tag.EncodedID), nil, nil, 204)
 		if err != nil {
 			t.Error(err)
+		}
+	})
+}
+
+func TestNoList(t *testing.T) {
+	var rBody routes.NoList
+	t.Run("Nolist Created", func(t *testing.T) {
+		_, err := DoRequest("POST", route("/nolist"), nil, nil, 409)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Correct Defaults", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/nolist"), nil, nil, 200)
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody.Items, make([]routes.TodoItem, 0)) {
+			t.Error(badDataErr)
+		} else if rBody.Meta.CryptoKey != "" {
+			t.Errorf(badDataErr)
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Update Items", func(t *testing.T) {
+		newItems := []routes.TodoItem{
+			routes.TodoItem{
+				Title:       encode("New Item"),
+				Description: encode("This one is new")}}
+		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
+			Items: newItems}, nil, 200)
+		if err != nil {
+			t.Error(err)
+		} else {
+			nolist.Items = newItems
+		}
+	})
+	t.Run("Update CryptoKey", func(t *testing.T) {
+		newMeta := routes.MetaPatch{
+			CryptoKey: encode("New Key")}
+		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
+			Meta: newMeta}, nil, 200)
+		if err != nil {
+			t.Error(err)
+		} else {
+			nolist.Meta = newMeta
+		}
+	})
+	t.Run("Updates Correctly Applied", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/nolist"), nil, nil, 200)
+		if err != nil {
+			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		nolist.Meta.Checksum = rBody.Meta.Checksum
+		if !reflect.DeepEqual(rBody, nolist) {
+			t.Error(badDataErr)
 		}
 	})
 }

@@ -8,7 +8,7 @@ import (
 
 // NoList - A specific form of todo list designed to hold any items that do not belong to a parent list
 type NoList struct {
-	Items []TodoItem `json:"items" validate:"required,dive"`
+	Items []TodoItem `json:"items" validate:"dive"`
 	Meta  MetaPatch  `json:"meta"`
 }
 
