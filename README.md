@@ -11,3 +11,5 @@ CSplan - go backend
 - [x] Limit crypto key size
 - [ ] CRUD no list todos
 - [ ] Route to receive all todo items merged
+- [ ] Add session management
+- [ ] Optimize storage efficiency of tokens
