@@ -8,3 +8,6 @@
 
 # Unignore all dirs
 !*/
+
+# Ignore all .env files
+*.env
