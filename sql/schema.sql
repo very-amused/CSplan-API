@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	ID bigint unsigned NOT NULL,
 	Email varchar(255) NOT NULL,
 	Password binary(48) NOT NULL,
+	HashParams tinytext NOT NULL,
 	Verified boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (ID),
 	UNIQUE (Email)
