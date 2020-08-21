@@ -21,9 +21,8 @@ var (
 	// The scrypt parallelization factor, to be calculated based on available threads
 	p int
 
-	// The 4 sets of scrypt parameters to be generated
-	scryptLow     string
-	scryptMedium  string
+	// The 3 sets of scrypt parameters to be generated
+	scryptNormal  string
 	scryptHigh    string
 	scryptExtreme string
 
@@ -31,40 +30,41 @@ var (
 	password = []byte("correcthorsebatterystaple")
 )
 
-func benchmarkScryptParams(maxTime int64) (params string) {
+func benchmarkScryptParams(maxRuntime time.Duration) (params string) {
 	for i := 1; true; i++ {
 		// N = 2^i
 		N := 1 << i
 
 		// Run the benchmark 5 times to ensure accurate data
-		var results int64 // Track results with millisecond precision
+		var results time.Duration
 		for i := 0; i < 5; i++ {
 			// Generate a random salt
 			salt := make([]byte, 16)
 			start := time.Now()
 			scrypt.Key(password, salt, N, r, p, keyLen)
-			t := time.Now().Sub(start)
-			results += t.Milliseconds()
+			elapsed := time.Now().Sub(start)
+			results += elapsed
 
-			// Log each run (TODO: control loglevel with cli flags)
+			// Log each run
 			if loglevel >= 2 {
-				fmt.Printf("N = %d: %s (run %d)\n", N, t, i+1)
+				fmt.Printf("N = %d: %s (run %d)\n", N, elapsed, i+1)
 			}
 		}
-		avgResult := results / 5                                              // Take the average of all runs
-		prettyResult, _ := time.ParseDuration(fmt.Sprintf("%dms", avgResult)) // Get a time.Duration form of the average runtime for pretty printing
+		avgResult := results / 5 // Take the average of all runs
 		// If the average duration exceeds the max time passed as a parameter, the previous set of parameters are the highest acceptable
-		if avgResult > maxTime {
+		if avgResult > maxRuntime {
 			if loglevel >= 1 {
-				fmt.Printf("\x1b[33mN = %d: avg %s\x1b[0m\n", N, prettyResult)
+				fmt.Printf("\x1b[33mN = %d: avg %s\x1b[0m\n", N, avgResult)
 			}
 			break
 		}
 		params = fmt.Sprintf("%d:%d:%d", N, r, p)
 		if loglevel >= 1 {
-			fmt.Printf("\x1b[32mN = %d: avg %s\x1b[0m\n", N, prettyResult)
+			fmt.Printf("\x1b[32mN = %d: avg %s\x1b[0m\n", N, avgResult)
 		}
 	}
+
+	// TODO: add benchmarks for r parameter
 
 	return params
 }
@@ -78,7 +78,7 @@ func BenchmarkScrypt(b *testing.B) {
 	}
 
 	// Parallelization factor is calculated as 3/4 of the available threads, rounded to the nearest integer
-	p = int(math.Ceil(0.75 * float64(runtime.NumCPU())))
+	p = int(math.Ceil(threadRatio * float64(runtime.NumCPU())))
 
 	// Initialize the env file
 	env, err := os.Create("scrypt.env")
@@ -87,18 +87,16 @@ func BenchmarkScrypt(b *testing.B) {
 	}
 	defer env.Close()
 
-	// Calculate scrypt parameters
-	fmt.Println("Calculating scrypt low difficulty workfactor...")
-	scryptLow = benchmarkScryptParams(300)
-	fmt.Println("Calculating scrypt medium difficulty workfactor...")
-	scryptMedium = benchmarkScryptParams(1000)
-	fmt.Println("Calculating scrypt high difficulty workfactor...")
-	scryptHigh = benchmarkScryptParams(2000)
-	fmt.Println("Calculating scrypt extreme difficulty workfactor...")
-	scryptExtreme = benchmarkScryptParams(5000)
+	// Calculate each set of scrypt parameters
+	fmt.Println("Calculating scrypt normal difficulty workfactor...")
+	scryptNormal = benchmarkScryptParams(time.Second * 1)
+	env.WriteString(fmt.Sprintf("SCRYPT_NORMAL=%s", scryptNormal))
 
-	// Write parameters to env file
-	env.WriteString(
-		fmt.Sprintf("SCRYPT_LOW=%s\nSCRYPT_MEDIUM=%s\nSCRYPT_HIGH=%s\nSCRYPT_EXTREME=%s\n",
-			scryptLow, scryptMedium, scryptHigh, scryptExtreme))
+	fmt.Println("Calculating scrypt high difficulty workfactor...")
+	scryptHigh = benchmarkScryptParams(time.Second * 2)
+	env.WriteString(fmt.Sprintf("SCRYPT_HIGH=%s", scryptHigh))
+
+	fmt.Println("Calculating scrypt extreme difficulty workfactor...")
+	scryptExtreme = benchmarkScryptParams(time.Second * 5)
+	env.WriteString("SCRYPT_EXTREME=%s")
 }
