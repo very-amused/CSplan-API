@@ -1,10 +1,15 @@
 package routes
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 )
+
+var twoWeeks int = 60 * 60 * 24 * 14
 
 var authError Error = Error{
 	Title:   "Unauthorized",
@@ -47,4 +52,37 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 	}
 	HTTPError(w, authError)
 	return 0, authError
+}
+
+// Login - Bypass the challenge authentication system, and simply return either a 409 or a token for the account
+// associated with the email sent
+func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	if !authBypass {
+		HTTPError(w, Error{
+			Title:   "Unauthorized",
+			Message: "Invalid authorization route requested. An authorization challenge must be requested and submitted.",
+			Status:  401})
+		return
+	}
+
+	var user User
+	json.NewDecoder(r.Body).Decode(&user)
+	if !user.exists() {
+		HTTPNotFoundError(w)
+		return
+	}
+
+	// Select the user's ID based on their email
+	DB.Get(&user, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+
+	tokens, err := user.newTokens()
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, twoWeeks))
+	// Don't write the HttpOnly token to the JSON response, this token must be kept from javascript access
+	json.NewEncoder(w).Encode(map[string]string{
+		"CSRFtoken": tokens.CSRFtoken})
 }

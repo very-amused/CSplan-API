@@ -14,6 +14,7 @@ type NoList struct {
 
 // CreateNoList - The creation of a nolist collection should be automatically accomplished at register-time,
 // but a route is specified here as a manual failsafe (no body POST)
+// TODO: allow post body for this route
 func CreateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 

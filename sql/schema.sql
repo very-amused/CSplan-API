@@ -5,13 +5,12 @@ SET GLOBAL event_scheduler = ON;
 CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	ID bigint unsigned NOT NULL,
 	Email varchar(255) NOT NULL,
-	Password binary(48) NOT NULL,
-	HashParams tinytext NOT NULL,
 	Verified boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (ID),
 	UNIQUE (Email)
 );
 
+-- State management
 CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 	UserID bigint unsigned NOT NULL,
 	Token tinytext NOT NULL,
@@ -25,7 +24,17 @@ CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
 	PRIMARY KEY (UserID) -- Only one deletetoken can be stored for a user at a time
 );
 
--- Create event for clearing delete tokens older than 10min
+CREATE TABLE IF NOT EXISTS CSplanGo.Challenges (
+  ID bigint unsigned NOT NULL,
+  UserID bigint unsigned NOT NULL,
+  _Data blob NOT NULL,
+  Failed boolean DEFAULT 0,
+  _Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
+  PRIMARY KEY (ID),
+  FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
+
+-- Create event for clearing delete tokens older than 5min
 delimiter |
 CREATE EVENT IF NOT EXISTS CSplanGo.ClearDeleteTokens
 	ON SCHEDULE EVERY 1 MINUTE
@@ -34,13 +43,29 @@ CREATE EVENT IF NOT EXISTS CSplanGo.ClearDeleteTokens
 		BEGIN
 			DELETE FROM CSplanGo.DeleteTokens WHERE UNIX_TIMESTAMP() - _Timestamp > 300;
 		END |
+
+-- Create events for the management of challenge attempts
+CREATE EVENT IF NOT EXISTS CSplanGo.ClearChallenges
+  ON SCHEDULE EVERY 1 MINUTE
+  COMMENT "Clear abandoned challenge attempts. An attempt is considered abandoned when it has not been attempted within 5 minutes of being requested."
+  DO
+    BEGIN
+      DELETE FROM CSplanGo.Challenges WHERE FAILED = 0 AND UNIX_TIMESTAMP() - _Timestamp > 300;
+    END |
+
+CREATE EVENT IF NOT EXISTS CSplanGo.ClearChallengeFails
+  ON SCHEDULE EVERY 1 MINUTE
+  COMMENT "Clear failed challenge attempts older than 1 hour."
+  DO
+    BEGIN
+      DELETE FROM CSplanGo.Challenges WHERE FAILED = 1 AND UNIX_TIMESTAMP() - _Timestamp > 3600;
+    END |
 delimiter ;
 
 -- Cryptography management - Keys
 CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
 	UserID bigint unsigned NOT NULL,
 	PublicKey blob NOT NULL,
-	PrivateKey blob NOT NULL,
 	PBKDF2salt tinyblob NOT NULL,
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );

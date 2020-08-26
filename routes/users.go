@@ -7,24 +7,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"golang.org/x/crypto/scrypt"
 )
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID             uint   `json:"-"`
-	EncodedID      string `json:"id"`
-	Email          string `json:"email" validate:"required,email"`
-	Password       string `json:"password" validate:"required,max=60" db:"-"`
-	HashedPassword []byte `db:"Password"`
-	Verfied        bool   `json:"verified"`
+	ID        uint    `json:"-"`
+	EncodedID string  `json:"id"`
+	Email     string  `json:"email" validate:"required,email"`
+	Verfied   bool    `json:"verified"`
+	Keys      KeyInfo `json:"keys"`
 }
 
 // UserState - State information for a user
 type UserState struct {
 	EncodedID string `json:"id"`
 	Verified  bool   `json:"verified"`
+	CSRFtoken string
+}
+
+// Challenge - RSA challenge to obtain authentication
+type Challenge struct {
+	ID          uint   `json:"-"`
+	EncodedID   string `json:"id"`
+	Data        []byte `json:"-"`
+	EncodedData string `json:"data"`
 }
 
 // Tokens - Authentication tokens for a user
@@ -59,56 +65,6 @@ func (user *User) exists() bool {
 	return exists == 1
 }
 
-// user.hashPassword - Hash a password using scrypt
-func (user *User) hashPassword() error {
-	// Generate random salt
-	salt := make([]byte, 16)
-	_, err := rand.Read(salt)
-	if err != nil {
-		return err
-	}
-
-	// Hash password using scrypt
-	// Todo - find more secure scrypt constants
-	passbytes := []byte(user.Password)
-	k, err := scrypt.Key(passbytes, salt, _N, r, p, 32)
-	if err != nil {
-		return err
-	}
-
-	// Set the user's hashed password to s | k
-	user.HashedPassword = append(salt, k...)
-	return nil
-}
-
-func (user *User) hasValidPassword() bool {
-	// Select and parse the user's valid scrypt hash
-	err := DB.Get(&user.HashedPassword, "SELECT Password FROM Users WHERE Email = ?", user.Email)
-	if err != nil {
-		return false
-	}
-	salt := user.HashedPassword[0:16]
-	k1 := user.HashedPassword[16:]
-
-	// Replicate the Scrypt process using the correct salt and provided password
-	passbytes := []byte(user.Password)
-	k2, err := scrypt.Key(passbytes, salt, _N, r, p, keyLen)
-	if err != nil {
-		return false
-	}
-
-	// Compare k1 (the correct key) to k2 (the key produced by the user)
-	if len(k1) != len(k2) { // Compare lengths first to ensure no invalid index panics
-		return false
-	}
-	for i := range k1 {
-		if k1[i] != k2[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func (user *User) insert() error {
 	// Ensure that the user id is unique
 	var result int
@@ -121,8 +77,8 @@ func (user *User) insert() error {
 	}
 
 	// Insert into db
-	_, err := DB.Exec("INSERT INTO Users (ID, Email, Password) VALUES (?, ?, ?)",
-		user.ID, user.Email, user.HashedPassword)
+	_, err := DB.Exec("INSERT INTO Users (ID, Email) VALUES (?, ?)",
+		user.ID, user.Email)
 	if err != nil {
 		return err
 	}
@@ -169,18 +125,9 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Do stuff
-	var err error
 	user.ID = MakeID()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
 	user.EncodedID = EncodeID(user.ID)
 	// Encode the user's id
-	if err := user.hashPassword(); err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
 	if err := user.insert(); err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -190,48 +137,6 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(UserState{
 		EncodedID: user.EncodedID,
 		Verified:  false})
-}
-
-// Login - Authenticate a user and send them an auth + CSRF token
-func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var user User
-	json.NewDecoder(r.Body).Decode(&user)
-	if err := HTTPValidate(w, user); err != nil {
-		return
-	}
-
-	if !user.exists() {
-		HTTPError(w, Error{
-			Title:   "Not Found",
-			Message: "This user doesn't exist",
-			Status:  404})
-		return
-	}
-
-	if !user.hasValidPassword() {
-		HTTPError(w, Error{
-			Title:   "Unauthorized",
-			Message: "Incorrect password",
-			Status:  401})
-		return
-	}
-
-	// Get the user's ID and verification state
-	DB.Get(&user, "SELECT ID, Verified FROM Users WHERE Email = ?", user.Email)
-
-	tokens, err := user.newTokens()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-
-	cookie := fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly; Path=/; SameSite: Lax", tokens.Token, 60*60*24*14) // Max-Age = 2 weeks
-	w.Header().Add("Set-Cookie", cookie)
-	json.NewEncoder(w).Encode(LoginState{
-		tokens,
-		UserState{
-			EncodedID: EncodeID(user.ID),
-			Verified:  user.Verfied}})
 }
 
 // DeleteAccount - Delete a user's account

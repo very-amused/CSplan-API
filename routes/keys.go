@@ -6,16 +6,15 @@ import (
 	"net/http"
 )
 
-// KeyPair - Cryptographic keypair for a user
-type KeyPair struct {
+// KeyInfo - Cryptographic keypair for a user
+type KeyInfo struct {
 	PublicKey  string `json:"publicKey" validate:"required,base64"`
-	PrivateKey string `json:"privateKey" validate:"required,base64"`
 	PBKDF2salt string `validate:"required,max=255,base64"`
 }
 
 // AddKeys - Add keys to a user's account
 func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var keys KeyPair
+	var keys KeyInfo
 	json.NewDecoder(r.Body).Decode(&keys)
 	// Validate and decode keys
 	var err error
@@ -39,8 +38,8 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PrivateKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
-		user, keys.PublicKey, keys.PrivateKey, keys.PBKDF2salt)
+	_, err = DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?))",
+		user, keys.PublicKey, keys.PBKDF2salt)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -50,11 +49,11 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-// GetKeys - Retrieve a user's keypair
+// GetKeys - Retrieve a user's key information
 func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
-	var keys KeyPair
-	err := DB.Get(&keys, "SELECT TO_BASE64(PublicKey) AS PublicKey, TO_BASE64(PrivateKey) AS PrivateKey, TO_BASE64(PBKDF2salt) as PBKDF2salt FROM CryptoKeys WHERE UserID = ?", user)
+	var keys KeyInfo
+	err := DB.Get(&keys, "SELECT TO_BASE64(PublicKey) AS PublicKey, TO_BASE64(PBKDF2salt) as PBKDF2salt FROM CryptoKeys WHERE UserID = ?", user)
 	if err != nil {
 		HTTPError(w, Error{
 			Title:   "Not Found",
