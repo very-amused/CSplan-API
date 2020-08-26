@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	UNIQUE (Email)
 );
 
+CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
+	UserID bigint unsigned NOT NULL,
+	AuthKey blob NOT NULL
+);
+
 -- State management
 CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
 	UserID bigint unsigned NOT NULL,
@@ -66,6 +71,7 @@ delimiter ;
 CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
 	UserID bigint unsigned NOT NULL,
 	PublicKey blob NOT NULL,
+	PrivateKey blob NOT NULL,
 	PBKDF2salt tinyblob NOT NULL,
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );

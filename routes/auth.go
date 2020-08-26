@@ -57,7 +57,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 // Login - Bypass the challenge authentication system, and simply return either a 409 or a token for the account
 // associated with the email sent
 func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	if !authBypass {
+	if !AuthBypass {
 		HTTPError(w, Error{
 			Title:   "Unauthorized",
 			Message: "Invalid authorization route requested. An authorization challenge must be requested and submitted.",

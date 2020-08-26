@@ -2,10 +2,9 @@ package routes
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha512"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -39,6 +38,7 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 			Title:   "Not Found",
 			Message: "The user associated with the requested challenge does not exist.",
 			Status:  404})
+		return
 	}
 	// Get the user's ID
 	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
@@ -63,33 +63,31 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	rand.Read(challenge.Data)
 
 	// Select the user's public key and PBKDF2 salt
-	var pubKey []byte
-	row := DB.QueryRow("SELECT PublicKey, TO_BASE64(PBKDF2salt) FROM CryptoKeys WHERE UserID = ?", user.ID)
-	err := row.Scan(&pubKey, &user.Keys.PBKDF2salt)
+	var authKey []byte
+	row := DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
+	err := row.Scan(&authKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
 
 	// Parse the user's public RSA key
-	pub, err := x509.ParsePKIXPublicKey(pubKey)
+	block, err := aes.NewCipher(authKey)
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+	// Create a tag for GCM encryption
+	iv := make([]byte, 12)
+	rand.Read(iv)
+	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
 
-	label := make([]byte, 0) // No label is used
-	switch pub := pub.(type) {
-	case *rsa.PublicKey:
-		encrypted, err := rsa.EncryptOAEP(sha512.New(), rand.Reader, pub, challenge.Data, label)
-		if err != nil {
-			HTTPInternalServerError(w, err)
-			return
-		}
-		// Encode the encrypted form of the challenge data
-		challenge.EncryptedData = base64.StdEncoding.EncodeToString(encrypted)
-		// TODO: add error handling if the key is of an invalid type
-	}
+	encrypted := gcm.Seal(nil, iv, challenge.Data, nil)
+	challenge.EncryptedData = base64.StdEncoding.EncodeToString(encrypted)
 
 	// Add the challenge to the database
 	_, err = DB.Exec("INSERT INTO Challenges (ID, UserID, _Data) VALUES (?, ?, ?)", challenge.ID, user.ID, challenge.Data)

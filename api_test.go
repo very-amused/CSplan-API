@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +13,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/very-amused/CSplan-API/routes"
 )
@@ -29,8 +33,8 @@ var (
 	client *http.Client
 	auth   routes.Tokens
 	user   = routes.User{
-		Email:    "user@test.com",
-		Password: "TestPassword"}
+		Email: "user@test.com"}
+	password = []byte("correcthorsebatterystaple")
 
 	name = routes.Name{
 		FirstName: encode("John"),
@@ -171,6 +175,32 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(exit)
+}
+
+func TestChallengeAuth(t *testing.T) {
+	var salt []byte
+	var authKey []byte
+	var challenge routes.Challenge
+	t.Run("PBKDF2", func(t *testing.T) {
+		rand.Read(salt)
+		authKey = pbkdf2.Key(password, salt, 110000, 32, sha512.New)
+	})
+	t.Run("Update AuthKey", func(t *testing.T) {
+		encoded := base64.StdEncoding.EncodeToString(authKey)
+		fmt.Println(encoded)
+		_, err := DoRequest("PATCH", route("/authkey"), routes.AuthKeyPatch{
+			AuthKey: encoded}, nil, 204)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Request Auth Challenge", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		json.NewDecoder(r.Body).Decode(&challenge)
+	})
 }
 
 func TestName(t *testing.T) {

@@ -11,11 +11,11 @@ import (
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID        uint    `json:"-"`
-	EncodedID string  `json:"id"`
-	Email     string  `json:"email" validate:"required,email"`
-	Verfied   bool    `json:"verified"`
-	Keys      KeyInfo `json:"keys"`
+	ID        uint   `json:"-"`
+	EncodedID string `json:"id"`
+	Email     string `json:"email" validate:"required,email"`
+	Verfied   bool   `json:"verified"`
+	AuthKey   string `json:"key"`
 }
 
 // UserState - State information for a user
@@ -134,8 +134,8 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the user's key info to the cryptokeys table
-	_, err = tx.Exec("INSERT INTO CryptoKeys (UserID, PBKDF2salt, PublicKey) VALUES (?, FROM_BASE64(?), FROM_BASE64(?))",
-		user.ID, user.Keys.PBKDF2salt, user.Keys.PublicKey)
+	_, err = tx.Exec("INSERT INTO AuthKeys (UserID, AuthKey) VALUES (?, FROM_BASE64(?))",
+		user.ID, user.AuthKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -170,12 +170,20 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 
 		// Notify the user with a 500 response if any of the delete queries fail
 		// If this ever happens in production, something has gone horribly wrong
+		tx, err := DB.Begin()
+		defer tx.Rollback()
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
 		queries := []string{
 			"DELETE FROM TodoLists WHERE UserID = ?",
 			"DELETE FROM Names WHERE UserID = ?",
+			"DELETE FROM AuthKeys WHERE UserID = ?",
 			"DELETE FROM CryptoKeys WHERE UserID = ?",
 			"DELETE FROM DeleteTokens WHERE UserID = ?",
 			"DELETE FROM Tokens WHERE UserID = ?",
+			"DELETE FROM Challenges WHERE UserID = ?",
 			"DELETE FROM NoList WHERE UserID = ?",
 			"DELETE FROM Users WHERE ID = ?"}
 		for _, query := range queries {
@@ -185,6 +193,7 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 				return
 			}
 		}
+		tx.Commit()
 
 		json.NewEncoder(w).Encode(DeleteConfirm{
 			Message: "Your account has been successfully deleted."})

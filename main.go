@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/very-amused/CSplan-API/middleware"
@@ -38,10 +40,22 @@ func loadMiddleware(r *mux.Router) {
 	r.Use(middleware.CORS)
 }
 
+func parseFlags() {
+	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
+	flag.BoolVar(&routes.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
+	flag.Parse()
+	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
+		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
+			"This flag allows users to completely and totally bypass the authentication system, and MUST NOT be used in production.\n",
+			"To disable this message, set the environment variable CSPLAN_NO_BYPASS_WARNING to 'true'.\x1b[0m")
+	}
+}
+
 func main() {
 	r := mux.NewRouter()
 	loadMiddleware(r)
 	loadRoutes(r)
+	parseFlags()
 
 	fmt.Println("Starting up CSplan API 🚀")
 	log.Fatal(http.ListenAndServe(":3000", r))

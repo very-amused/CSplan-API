@@ -2,10 +2,8 @@ package routes
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 )
 
@@ -15,7 +13,8 @@ type Route struct {
 	AuthLevel int
 }
 
-var authBypass bool = false
+// AuthBypass - An unsafe bypass flag for user authentication
+var AuthBypass bool = false
 
 // Map - Static map of HTTP routes to their corresponding handlers
 var Map = make(map[string]*Route)
@@ -40,15 +39,6 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
-	flag.BoolVar(&authBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
-	flag.Parse()
-	if authBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
-		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
-			"This flag allows users to completely and totally bypass the authentication system, and MUST NOT be used in production.\n",
-			"To disable this message, set the environment variable CSPLAN_NO_BYPASS_WARNING to 'true'.\x1b[0m")
-	}
-
 	Map["POST:/register"] = &Route{
 		handler:   Register,
 		AuthLevel: 0}
@@ -65,6 +55,10 @@ func init() {
 	Map["POST:/login"] = &Route{
 		handler:   Login,
 		AuthLevel: 0}
+
+	Map["PATCH:/authkey"] = &Route{
+		handler:   UpdateAuthKey,
+		AuthLevel: 1}
 
 	Map["GET:/keys"] = &Route{
 		handler:   GetKeys,
