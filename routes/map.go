@@ -59,13 +59,13 @@ func init() {
 		handler:   DeleteAccount,
 		AuthLevel: 1}
 
+	Map["POST:/challenge"] = &Route{
+		handler:   ChallengeRoute,
+		AuthLevel: 0}
 	Map["POST:/login"] = &Route{
 		handler:   Login,
 		AuthLevel: 0}
 
-	Map["POST:/keys"] = &Route{
-		handler:   AddKeys,
-		AuthLevel: 1}
 	Map["GET:/keys"] = &Route{
 		handler:   GetKeys,
 		AuthLevel: 1}

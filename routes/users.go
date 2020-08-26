@@ -22,15 +22,14 @@ type User struct {
 type UserState struct {
 	EncodedID string `json:"id"`
 	Verified  bool   `json:"verified"`
-	CSRFtoken string
 }
 
 // Challenge - RSA challenge to obtain authentication
 type Challenge struct {
-	ID          uint   `json:"-"`
-	EncodedID   string `json:"id"`
-	Data        []byte `json:"-"`
-	EncodedData string `json:"data"`
+	ID            uint   `json:"-"`
+	EncodedID     string `json:"id"`
+	Data          []byte `json:"-"`
+	EncryptedData string `json:"data"`
 }
 
 // Tokens - Authentication tokens for a user
@@ -63,28 +62,6 @@ func (user *User) exists() bool {
 	exists := 0
 	DB.Get(&exists, "SELECT 1 FROM Users WHERE Email = ?", user.Email)
 	return exists == 1
-}
-
-func (user *User) insert() error {
-	// Ensure that the user id is unique
-	var result int
-	for {
-		err := DB.Get(&result, "SELECT 1 FROM Users WHERE ID = ?", user.ID)
-		if err != nil {
-			break
-		}
-		user.ID++
-	}
-
-	// Insert into db
-	_, err := DB.Exec("INSERT INTO Users (ID, Email) VALUES (?, ?)",
-		user.ID, user.Email)
-	if err != nil {
-		return err
-	}
-	// Automatically create a NoList collection for the user
-	_, err = DB.Exec("INSERT INTO NoList (UserID) VALUES (?)", user.ID)
-	return err
 }
 
 func (user *User) newTokens() (Tokens, error) {
@@ -124,11 +101,46 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Do stuff
-	user.ID = MakeID()
+	// Generate the user's ID
+	for {
+		user.ID = MakeID()
+		rows, err := DB.Query("SELECT 1 FROM Users WHERE ID = ?", user.ID)
+		defer rows.Close()
+		if !rows.Next() {
+			break
+		} else {
+			if err != nil {
+				HTTPInternalServerError(w, err)
+				return
+			}
+			user.ID++
+		}
+	}
 	user.EncodedID = EncodeID(user.ID)
-	// Encode the user's id
-	if err := user.insert(); err != nil {
+
+	// Insert the user into the database
+	tx, err := DB.Beginx()
+	defer tx.Rollback()
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	// Add to the users table
+	_, err = tx.Exec("INSERT INTO Users (ID, Email, Verified) VALUES (?, ?, ?)", user.ID, user.Email, user.Verfied)
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	// Add the user's key info to the cryptokeys table
+	_, err = tx.Exec("INSERT INTO CryptoKeys (UserID, PBKDF2salt, PublicKey) VALUES (?, FROM_BASE64(?), FROM_BASE64(?))",
+		user.ID, user.Keys.PBKDF2salt, user.Keys.PublicKey)
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}

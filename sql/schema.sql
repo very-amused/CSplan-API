@@ -47,15 +47,15 @@ CREATE EVENT IF NOT EXISTS CSplanGo.ClearDeleteTokens
 -- Create events for the management of challenge attempts
 CREATE EVENT IF NOT EXISTS CSplanGo.ClearChallenges
   ON SCHEDULE EVERY 1 MINUTE
-  COMMENT "Clear abandoned challenge attempts. An attempt is considered abandoned when it has not been attempted within 5 minutes of being requested."
+  COMMENT "Clear abandoned challenge attempts. An attempt is considered abandoned when it has not been attempted within 1 minute of being requested."
   DO
     BEGIN
-      DELETE FROM CSplanGo.Challenges WHERE FAILED = 0 AND UNIX_TIMESTAMP() - _Timestamp > 300;
+      DELETE FROM CSplanGo.Challenges WHERE FAILED = 0 AND UNIX_TIMESTAMP() - _Timestamp > 60;
     END |
 
 CREATE EVENT IF NOT EXISTS CSplanGo.ClearChallengeFails
   ON SCHEDULE EVERY 1 MINUTE
-  COMMENT "Clear failed challenge attempts older than 1 hour."
+  COMMENT "Clear failed challenge attempts older than 1 hour. These are kept in the database longer for ratelimiting purposes."
   DO
     BEGIN
       DELETE FROM CSplanGo.Challenges WHERE FAILED = 1 AND UNIX_TIMESTAMP() - _Timestamp > 3600;

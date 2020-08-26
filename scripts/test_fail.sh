@@ -7,7 +7,7 @@
 tables=$(tac sql/schema.sql | grep 'CREATE TABLE IF NOT EXISTS' | awk '{print $6}')
 db=$(awk 'NR==1{split($1,a,"."); print a[1]}' <<< $tables)
 
-queries="SELECT ID INTO @UserID FROM $db.Users WHERE Email = 'user@test.com';"
+queries="SELECT ID INTO @UserID FROM $db.Users WHERE Email = 'test@user2.com';"
 while read table; do
 	[ "$table" == "$db.Users" ] && continue
 	query="DELETE FROM $table WHERE UserID = @UserID;"
@@ -19,5 +19,5 @@ final_query="DELETE FROM $db.Users WHERE ID = @UserID;"
 queries="$queries $final_query"
 
 # Run the queries and notify the user of success
-echo $queries | mariadb -uadmin -p$MARIADB_PASSWORD \
+mariadb -uadmin -p$MARIADB_PASSWORD <<< $queries \
 && echo -e "\e[32mThe test user account has successfully been cleared from the database.\e[0m"

@@ -12,6 +12,6 @@ CSplan - go backend
 - [x] CRUD no list todos
 - [ ] All per-account resources (names, keys, etc) moved to a route under /account (i.e: /name -> /account/name)
 - [ ] RSA challenge based auth
-- [ ] Auth bypass CLI flag (with warning)
+- [x] Auth bypass CLI flag (with warning)
 - [ ] Add session management
 - [ ] Optimize storage efficiency of tokens

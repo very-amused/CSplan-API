@@ -12,43 +12,6 @@ type KeyInfo struct {
 	PBKDF2salt string `validate:"required,max=255,base64"`
 }
 
-// AddKeys - Add keys to a user's account
-func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var keys KeyInfo
-	json.NewDecoder(r.Body).Decode(&keys)
-	// Validate and decode keys
-	var err error
-	if err := HTTPValidate(w, keys); err != nil {
-		return
-	}
-	user := ctx.Value(key("user")).(uint)
-
-	if err != nil {
-		HTTPInternalServerError(w, err)
-	}
-
-	// Existence check
-	var exists int
-	err = DB.Get(&exists, "SELECT 1 FROM CryptoKeys WHERE UserID = ?", user)
-	if err == nil {
-		HTTPError(w, Error{
-			Title:   "Resource Conflict",
-			Message: "A keypair already exists for this user",
-			Status:  409})
-		return
-	}
-
-	_, err = DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?))",
-		user, keys.PublicKey, keys.PBKDF2salt)
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-
-	// No checksum is needed for this particular resource
-	w.WriteHeader(204)
-}
-
 // GetKeys - Retrieve a user's key information
 func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
@@ -64,3 +27,5 @@ func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(keys)
 }
+
+// TODO: add route to update keys
