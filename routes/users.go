@@ -111,7 +111,7 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user.EncodedID = EncodeID(user.ID)
 
 	// Insert the user into the database
-	tx, err := DB.Beginx()
+	tx, err := DB.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		HTTPInternalServerError(w, err)

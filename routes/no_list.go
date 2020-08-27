@@ -9,6 +9,12 @@ import (
 // NoList - A specific form of todo list designed to hold any items that do not belong to a parent list
 type NoList struct {
 	Items []TodoItem `json:"items" validate:"dive"`
+	Meta  Meta       `json:"meta"`
+}
+
+// NoListPatch - A patch to an existing nolist collection
+type NoListPatch struct {
+	Items []TodoItem `json:"items" validate:"dive"`
 	Meta  MetaPatch  `json:"meta"`
 }
 
@@ -17,6 +23,11 @@ type NoList struct {
 // TODO: allow post body for this route
 func CreateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
+	var list NoList
+	json.NewDecoder(r.Body).Decode(&list)
+	if err := HTTPValidate(w, list); err != nil {
+		return
+	}
 
 	// Check for resource conflicts
 	rows, err := DB.Query("SELECT 1 FROM NoList WHERE UserID = ?", user)
@@ -32,18 +43,29 @@ func CreateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = DB.Exec("INSERT INTO NoList (UserID) VALUES (?)", user)
+	// Marshal list items
+	marshalled, _ := json.Marshal(list.Items)
+	encoded := string(marshalled)
+
+	_, err = DB.Exec("INSERT INTO NoList (UserID, Items, CryptoKey) VALUES (?, ?, FROM_BASE64(?))", user, encoded, list.Meta.CryptoKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	w.WriteHeader(204)
+	var Checksum string
+	DB.Get(&Checksum, "SELECT SHA(CONCAT(Items, CryptoKey)) FROM NoList WHERE UserID = ?", user)
+
+	w.Header().Set("Location", "/nolist")
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(MetaResponse{
+		Meta: State{
+			Checksum}})
 }
 
 // UpdateNoList - Update the items or key of a nolist collection
 func UpdateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
-	var patch NoList
+	var patch NoListPatch
 	json.NewDecoder(r.Body).Decode(&patch)
 	if err := HTTPValidate(w, patch); err != nil {
 		return

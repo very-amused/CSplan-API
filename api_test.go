@@ -73,7 +73,7 @@ var (
 			routes.TodoItem{
 				Title:       encode("Nolist item"),
 				Description: encode("Sample Description")}},
-		Meta: routes.MetaPatch{
+		Meta: routes.Meta{
 			CryptoKey: encode("EncryptedKey")}}
 	nolistItemPatch = []routes.TodoItem{
 		routes.TodoItem{
@@ -227,7 +227,6 @@ func TestChallengeAuth(t *testing.T) {
 		}
 		var tokens routes.Tokens
 		json.NewDecoder(r.Body).Decode(&tokens)
-		fmt.Println(tokens.CSRFtoken)
 	})
 }
 
@@ -375,22 +374,22 @@ func TestTags(t *testing.T) {
 
 func TestNoList(t *testing.T) {
 	var rBody routes.NoList
-	t.Run("Nolist Created", func(t *testing.T) {
-		_, err := DoRequest("POST", route("/nolist"), nil, nil, 409)
+	t.Run("Create NoList", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/nolist"), nolist, nil, 201)
 		if err != nil {
 			t.Error(err)
 		}
-	})
-	t.Run("Correct Defaults", func(t *testing.T) {
-		r, err := DoRequest("GET", route("/nolist"), nil, nil, 200)
 		json.NewDecoder(r.Body).Decode(&rBody)
-		if !reflect.DeepEqual(rBody.Items, make([]routes.TodoItem, 0)) {
-			t.Error(badDataErr)
-		} else if rBody.Meta.CryptoKey != "" {
-			t.Errorf(badDataErr)
-		}
+		nolist.Meta.Checksum = rBody.Meta.Checksum
+	})
+	t.Run("Get NoList", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/nolist"), nil, nil, 200)
 		if err != nil {
 			t.Error(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, nolist) {
+			t.Error(badDataErr)
 		}
 	})
 	t.Run("Update Items", func(t *testing.T) {
@@ -403,13 +402,13 @@ func TestNoList(t *testing.T) {
 		}
 	})
 	t.Run("Update CryptoKey", func(t *testing.T) {
-
-		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
+		_, err := DoRequest("PATCH", route("/nolist"), routes.NoListPatch{
 			Meta: nolistMetaPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
 		} else {
-			nolist.Meta = nolistMetaPatch
+			nolist.Meta.CryptoKey = nolistMetaPatch.CryptoKey
+			nolist.Meta.Checksum = nolistMetaPatch.Checksum
 		}
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
