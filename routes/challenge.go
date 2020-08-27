@@ -9,27 +9,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
-// ChallengeRoute - Parse the challenge action from query parameters and continue with the appropriate route
-func ChallengeRoute(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	params := r.URL.Query()
-	switch params.Get("action") {
-	case "request":
-		RequestChallenge(ctx, w, r)
-	case "submit":
-		SubmitChallenge(ctx, w, r)
-	default:
-		HTTPError(w, Error{
-			Title:   "Bad Request",
-			Message: "The requested challenge action is either invalid or missing.",
-			Status:  409})
-		return
+// Challenge - Encryption challenge to obtain authentication
+type Challenge struct {
+	ID          uint   `json:"-"`
+	EncodedID   string `json:"id"`
+	Data        []byte `json:"-"`
+	EncodedData string `json:"data"`
+	IV          string `json:"iv"`
+	Salt        string `json:"salt"`
+}
+
+func (challenge *Challenge) encryptData(block cipher.Block) error {
+	// Generate an IV for the operation
+	iv := make([]byte, 12)
+	rand.Read(iv)
+	challenge.IV = base64.StdEncoding.EncodeToString(iv)
+
+	// Create a GCM cipher
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
 	}
+	// Encrypt the data and store it as challenge.EncodedData
+	encrypted := gcm.Seal(nil, iv, challenge.Data, nil)
+	challenge.EncodedData = base64.StdEncoding.EncodeToString(encrypted)
+	return nil
 }
 
 // RequestChallenge - Request an authentication challenge
 func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	// Enforce action verbage
+	if r.URL.Query().Get("action") != "request" {
+		HTTPError(w, Error{
+			Title:   "Invalid Action Parameter",
+			Message: "To enforce semantics, all new challenge requests must contain '?action=request'.",
+			Status:  422})
+		return
+	}
+
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 
@@ -54,40 +75,48 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Generate 16 bytes of random data for the challenge
 	var challenge Challenge
-	challenge.ID = MakeID()
-	// TODO: ensure challenge IDs are unique
-	challenge.EncodedID = EncodeID(challenge.ID)
-	challenge.Data = make([]byte, 16)
+	// Create a unique ID
+	for {
+		challenge.ID = MakeID()
+		rows, err := DB.Query("SELECT 1 FROM Challenges WHERE ID = ?", challenge.ID)
+		defer rows.Close()
+		if !rows.Next() {
+			challenge.EncodedID = EncodeID(challenge.ID)
+			break
+		} else if err == nil {
+			challenge.ID++
+		} else {
+			HTTPInternalServerError(w, err)
+			return
+		}
+	}
+
+	// Generate 32 bytes of random data for the challenge
+	challenge.Data = make([]byte, 32)
 	rand.Read(challenge.Data)
 
-	// Select the user's public key and PBKDF2 salt
-	var authKey []byte
+	// Select and parse user's authentication key and PBKDF2 salt
+	var saltAndKey []byte
 	row := DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
-	err := row.Scan(&authKey)
+	err := row.Scan(&saltAndKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
+	challenge.Salt = base64.StdEncoding.EncodeToString(saltAndKey[0:16])
+	authKey := saltAndKey[16:]
 
-	// Parse the user's public RSA key
+	// Create a block cipher from the authkey, then encrypt the challenge's data
 	block, err := aes.NewCipher(authKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	// Create a tag for GCM encryption
-	iv := make([]byte, 12)
-	rand.Read(iv)
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
+	if err := challenge.encryptData(block); err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-
-	encrypted := gcm.Seal(nil, iv, challenge.Data, nil)
-	challenge.EncryptedData = base64.StdEncoding.EncodeToString(encrypted)
 
 	// Add the challenge to the database
 	_, err = DB.Exec("INSERT INTO Challenges (ID, UserID, _Data) VALUES (?, ?, ?)", challenge.ID, user.ID, challenge.Data)
@@ -101,5 +130,71 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 
 // SubmitChallenge - Submit an authentication challenge
 func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	fmt.Println("challenge submitted")
+	// Enforce action verbage
+	if r.URL.Query().Get("action") != "submit" {
+		HTTPError(w, Error{
+			Title:   "Invalid Action Parameter",
+			Message: "To enforce semantics, all challenge submissions must contain '?action=submit'.",
+			Status:  422})
+		return
+	}
+
+	var challenge Challenge
+	var user User
+	json.NewDecoder(r.Body).Decode(&challenge)
+	if err := HTTPValidate(w, challenge); err != nil {
+		return
+	}
+
+	var err error
+	challenge.ID, err = DecodeID(mux.Vars(r)["id"])
+	if err != nil {
+		HTTPError(w, Error{
+			Title:   "Bad Request",
+			Message: "Missing or malformed ID provided.",
+			Status:  400})
+		return
+	}
+	challenge.Data, err = base64.StdEncoding.DecodeString(challenge.EncodedData)
+
+	var correctData []byte
+	row := DB.QueryRow("SELECT _Data, UserID FROM Challenges WHERE ID = ? AND Failed = 0", challenge.ID)
+	err = row.Scan(&correctData, &user.ID)
+	if err != nil {
+		HTTPNotFoundError(w)
+		return
+	}
+
+	// Compare lengths first to avoid range errors
+	if len(challenge.Data) != len(correctData) {
+		HTTPError(w, Error{
+			Title:   "Challenge Failed",
+			Message: "Incorrect data provided.",
+			Status:  401})
+		return
+	}
+
+	// If the data isn't equal to the
+	for i := range correctData {
+		if correctData[i] != challenge.Data[i] {
+			HTTPError(w, Error{
+				Title:   "Challenge Failed",
+				Message: "Incorrect data provided.",
+				Status:  401})
+			return
+		}
+	}
+
+	// At this point, the challenge is successful and the user is authorized
+	// Create new tokens
+	DB.Exec("DELETE FROM Challenges WHERE ID = ?", challenge.ID)
+	tokens, err := user.newTokens()
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; HttpOnly; Max-Age=%d", tokens.Token, twoWeeks))
+	json.NewEncoder(w).Encode(map[string]string{
+		"CSRFtoken": tokens.CSRFtoken})
 }

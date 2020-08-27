@@ -7,7 +7,7 @@
 tables=$(tac sql/schema.sql | grep 'CREATE TABLE IF NOT EXISTS' | awk '{print $6}')
 db=$(awk 'NR==1{split($1,a,"."); print a[1]}' <<< $tables)
 
-queries="SELECT ID INTO @UserID FROM $db.Users WHERE Email = 'test@user2.com';"
+queries="SELECT ID INTO @UserID FROM $db.Users WHERE Email = 'user@test.com';"
 while read table; do
 	[ "$table" == "$db.Users" ] && continue
 	query="DELETE FROM $table WHERE UserID = @UserID;"

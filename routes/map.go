@@ -50,7 +50,10 @@ func init() {
 		AuthLevel: 1}
 
 	Map["POST:/challenge"] = &Route{
-		handler:   ChallengeRoute,
+		handler:   RequestChallenge,
+		AuthLevel: 0}
+	Map["POST:/challenge/{id}"] = &Route{
+		handler:   SubmitChallenge,
 		AuthLevel: 0}
 	Map["POST:/login"] = &Route{
 		handler:   Login,

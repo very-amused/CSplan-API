@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha512"
 	"encoding/base64"
@@ -178,16 +180,17 @@ func TestMain(m *testing.M) {
 }
 
 func TestChallengeAuth(t *testing.T) {
-	var salt []byte
 	var authKey []byte
 	var challenge routes.Challenge
+	var encoded string
+	var encryptedData []byte
 	t.Run("PBKDF2", func(t *testing.T) {
+		salt := make([]byte, 16)
 		rand.Read(salt)
-		authKey = pbkdf2.Key(password, salt, 110000, 32, sha512.New)
+		authKey = pbkdf2.Key(password, salt, 200000, 32, sha512.New)
+		encoded = base64.StdEncoding.EncodeToString(append(salt, authKey...))
 	})
 	t.Run("Update AuthKey", func(t *testing.T) {
-		encoded := base64.StdEncoding.EncodeToString(authKey)
-		fmt.Println(encoded)
 		_, err := DoRequest("PATCH", route("/authkey"), routes.AuthKeyPatch{
 			AuthKey: encoded}, nil, 204)
 		if err != nil {
@@ -200,6 +203,31 @@ func TestChallengeAuth(t *testing.T) {
 			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&challenge)
+		encryptedData, _ = base64.StdEncoding.DecodeString(challenge.EncodedData)
+	})
+	t.Run("Decrypt Challenge Data", func(t *testing.T) {
+		// Recreate the key derivation using the params sent by the API
+		salt, _ := base64.StdEncoding.DecodeString(challenge.Salt)
+		iv, _ := base64.StdEncoding.DecodeString(challenge.IV)
+		newKey := pbkdf2.Key(password, salt, 200000, 32, sha512.New)
+
+		// Decrypt the challenge data
+		block, _ := aes.NewCipher(newKey)
+		gcm, _ := cipher.NewGCM(block)
+		decrypted, err := gcm.Open(nil, iv, encryptedData, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		challenge.EncodedData = base64.StdEncoding.EncodeToString(decrypted)
+	})
+	t.Run("Submit Challenge", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/challenge/"+challenge.EncodedID+"?action=submit"), challenge, nil, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tokens routes.Tokens
+		json.NewDecoder(r.Body).Decode(&tokens)
+		fmt.Println(tokens.CSRFtoken)
 	})
 }
 

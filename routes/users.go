@@ -24,14 +24,6 @@ type UserState struct {
 	Verified  bool   `json:"verified"`
 }
 
-// Challenge - RSA challenge to obtain authentication
-type Challenge struct {
-	ID            uint   `json:"-"`
-	EncodedID     string `json:"id"`
-	Data          []byte `json:"-"`
-	EncryptedData string `json:"data"`
-}
-
 // Tokens - Authentication tokens for a user
 type Tokens struct {
 	Token     string `json:"-"`
