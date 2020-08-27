@@ -19,7 +19,6 @@ type Challenge struct {
 	EncodedID   string `json:"id"`
 	Data        []byte `json:"-"`
 	EncodedData string `json:"data"`
-	IV          string `json:"iv"`
 	Salt        string `json:"salt"`
 }
 
@@ -27,7 +26,6 @@ func (challenge *Challenge) encryptData(block cipher.Block) error {
 	// Generate an IV for the operation
 	iv := make([]byte, 12)
 	rand.Read(iv)
-	challenge.IV = base64.StdEncoding.EncodeToString(iv)
 
 	// Create a GCM cipher
 	gcm, err := cipher.NewGCM(block)
@@ -36,7 +34,7 @@ func (challenge *Challenge) encryptData(block cipher.Block) error {
 	}
 	// Encrypt the data and store it as challenge.EncodedData
 	encrypted := gcm.Seal(nil, iv, challenge.Data, nil)
-	challenge.EncodedData = base64.StdEncoding.EncodeToString(encrypted)
+	challenge.EncodedData = base64.StdEncoding.EncodeToString(append(iv, encrypted...))
 	return nil
 }
 

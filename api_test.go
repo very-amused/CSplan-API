@@ -183,7 +183,7 @@ func TestChallengeAuth(t *testing.T) {
 	var authKey []byte
 	var challenge routes.Challenge
 	var encoded string
-	var encryptedData []byte
+	var ivAndEncryptedData []byte
 	t.Run("PBKDF2", func(t *testing.T) {
 		salt := make([]byte, 16)
 		rand.Read(salt)
@@ -203,15 +203,16 @@ func TestChallengeAuth(t *testing.T) {
 			t.Fatal(err)
 		}
 		json.NewDecoder(r.Body).Decode(&challenge)
-		encryptedData, _ = base64.StdEncoding.DecodeString(challenge.EncodedData)
+		ivAndEncryptedData, _ = base64.StdEncoding.DecodeString(challenge.EncodedData)
 	})
 	t.Run("Decrypt Challenge Data", func(t *testing.T) {
 		// Recreate the key derivation using the params sent by the API
 		salt, _ := base64.StdEncoding.DecodeString(challenge.Salt)
-		iv, _ := base64.StdEncoding.DecodeString(challenge.IV)
+		iv := ivAndEncryptedData[0:12]
 		newKey := pbkdf2.Key(password, salt, 200000, 32, sha512.New)
 
 		// Decrypt the challenge data
+		encryptedData := ivAndEncryptedData[12:]
 		block, _ := aes.NewCipher(newKey)
 		gcm, _ := cipher.NewGCM(block)
 		decrypted, err := gcm.Open(nil, iv, encryptedData, nil)
