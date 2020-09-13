@@ -63,8 +63,14 @@ func init() {
 		handler:   UpdateAuthKey,
 		AuthLevel: 1}
 
+	Map["POST:/keys"] = &Route{
+		handler:   AddKeys,
+		AuthLevel: 1}
 	Map["GET:/keys"] = &Route{
 		handler:   GetKeys,
+		AuthLevel: 1}
+	Map["PATCH:/keys"] = &Route{
+		handler:   UpdateKeys,
 		AuthLevel: 1}
 
 	Map["POST:/name"] = &Route{

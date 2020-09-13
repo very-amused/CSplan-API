@@ -15,11 +15,13 @@ CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
 	AuthKey blob NOT NULL
 );
 
--- State management
-CREATE TABLE IF NOT EXISTS CSplanGo.Tokens (
+-- User authentication and session information
+CREATE TABLE IF NOT EXISTS CSplanGo.Sessions (
 	UserID bigint unsigned NOT NULL,
 	Token tinytext NOT NULL,
-	CSRFtoken tinytext NOT NULL
+	CSRFtoken tinytext NOT NULL,
+	_Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
+	DeviceInfo tinytext NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (

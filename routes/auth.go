@@ -37,7 +37,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 	}
 	id = uint(parsedID)
 
-	rows, err := DB.Queryx("SELECT Token, CSRFtoken FROM Tokens WHERE UserID = ?", id)
+	rows, err := DB.Queryx("SELECT Token, CSRFtoken FROM Sessions WHERE UserID = ?", id)
 	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)

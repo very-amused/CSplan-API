@@ -14,8 +14,8 @@ type User struct {
 	ID        uint   `json:"-"`
 	EncodedID string `json:"id"`
 	Email     string `json:"email" validate:"required,email"`
-	Verfied   bool   `json:"verified"`
-	AuthKey   string `json:"key"`
+	Verified  bool   `json:"verified"`
+	AuthKey   string `json:"key"` // The AES-GCM authentication key used to provide encryption challenges for the user
 }
 
 // UserState - State information for a user
@@ -69,7 +69,7 @@ func (user *User) newTokens() (Tokens, error) {
 	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
-	_, err := DB.Exec("INSERT INTO Tokens (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
+	_, err := DB.Exec("INSERT INTO Sessions (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
 
 	return Tokens{
 		Token,
@@ -119,7 +119,7 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add to the users table
-	_, err = tx.Exec("INSERT INTO Users (ID, Email, Verified) VALUES (?, ?, ?)", user.ID, user.Email, user.Verfied)
+	_, err = tx.Exec("INSERT INTO Users (ID, Email, Verified) VALUES (?, ?, ?)", user.ID, user.Email, user.Verified)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
@@ -174,7 +174,7 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			"DELETE FROM AuthKeys WHERE UserID = ?",
 			"DELETE FROM CryptoKeys WHERE UserID = ?",
 			"DELETE FROM DeleteTokens WHERE UserID = ?",
-			"DELETE FROM Tokens WHERE UserID = ?",
+			"DELETE FROM Sessions WHERE UserID = ?",
 			"DELETE FROM Challenges WHERE UserID = ?",
 			"DELETE FROM NoList WHERE UserID = ?",
 			"DELETE FROM Users WHERE ID = ?"}

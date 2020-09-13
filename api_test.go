@@ -38,6 +38,11 @@ var (
 		Email: "user@test.com"}
 	password = []byte("correcthorsebatterystaple")
 
+	keys = routes.CryptoKeys{
+		PublicKey:  encode("public key"),
+		PrivateKey: encode("private key"),
+		PBKDF2salt: encode("secure salt")}
+
 	name = routes.Name{
 		FirstName: encode("John"),
 		LastName:  encode("Doe"),
@@ -177,6 +182,43 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(exit)
+}
+
+func TestKeys(t *testing.T) {
+	var rBody routes.CryptoKeys
+	t.Run("Create Keypair", func(t *testing.T) {
+		_, err := DoRequest("POST", route("/keys"), keys, nil, 201)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Get Keypair", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/keys"), nil, nil, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, keys) {
+			t.Fatal(badDataErr)
+		}
+	})
+	t.Run("Update Keypair", func(t *testing.T) {
+		keys.PublicKey = encode("new public key")
+		_, err := DoRequest("PATCH", route("/keys"), keys, nil, 204)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Updates Correctly Applied", func(t *testing.T) {
+		r, err := DoRequest("GET", route("/keys"), nil, nil, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		json.NewDecoder(r.Body).Decode(&rBody)
+		if !reflect.DeepEqual(rBody, keys) {
+			t.Fatal(badDataErr)
+		}
+	})
 }
 
 func TestChallengeAuth(t *testing.T) {
