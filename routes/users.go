@@ -7,15 +7,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID        uint   `json:"-"`
-	EncodedID string `json:"id"`
-	Email     string `json:"email" validate:"required,email"`
-	Verified  bool   `json:"verified"`
-	AuthKey   string `json:"key"` // The AES-GCM authentication key used to provide encryption challenges for the user
+	ID         uint   `json:"-"`
+	EncodedID  string `json:"id"`
+	Email      string `json:"email" validate:"required,email"`
+	Verified   bool   `json:"verified"`
+	DeviceInfo string `json:"-"`
+	AuthKey    string `json:"key"` // The AES-GCM authentication key used to provide encryption challenges for the user
 }
 
 // UserState - State information for a user
@@ -49,6 +52,28 @@ type DeleteConfirm struct {
 // Scrypt Params - N, r, p, keyLen
 var _N, r, p, keyLen = 32768, 9, 1, 32
 
+// Regexes for parsing user device and browser
+type useragentMatch struct {
+	name  string
+	regex *regexp.Regexp
+}
+type uaBrowser useragentMatch
+type uaOS useragentMatch
+
+var browsers = []uaBrowser{
+	uaBrowser{
+		name:  "Firefox",
+		regex: regexp.MustCompile("Firefox")},
+	uaBrowser{
+		name:  "Opera",
+		regex: regexp.MustCompile("OPR")},
+	uaBrowser{
+		name:  "Chrome/Chromium",
+		regex: regexp.MustCompile("Chrome")},
+	uaBrowser{
+		name:  "Safari",
+		regex: regexp.MustCompile("Safari")}}
+
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
 	exists := 0
@@ -56,7 +81,40 @@ func (user *User) exists() bool {
 	return exists == 1
 }
 
-func (user *User) newTokens() (Tokens, error) {
+// parse the user's device info in the form of ip,browser,os
+// (colons can't be used as separators because of ipv6 addresses)
+func (user *User) parseDeviceInfo(r *http.Request) {
+	// Parse user ip address
+	// TODO: create setting for users to opt out of  ip address association with sessions
+	var ip string
+	if ip = r.Header.Get("X-Forwarded-For"); len(ip) == 0 {
+		ip = r.RemoteAddr
+	}
+	// Trim the port from the ip
+	parts := strings.Split(ip, ":")
+	ip = strings.Join(parts[:len(parts)-1], ":")
+
+	// Get user operating system via regex matching for useragent string
+	var userAgent = r.Header.Get("User-Agent")
+	var browser string
+	for _, b := range browsers {
+		if b.regex.MatchString(userAgent) {
+			browser = b.name
+			break
+		}
+	}
+	// If no browser was able to be parsed, set browser as 'Unknown'
+	if len(browser) == 0 {
+		browser = "Unknown"
+	}
+
+	// TODO: Repeat the same process for parsing the user's OS
+	os := "Unknown"
+
+	user.DeviceInfo = fmt.Sprintf("%s,%s,%s", ip, browser, os)
+}
+
+func (user *User) newSession() (Tokens, error) {
 	// Get the user's ID from the db for identification purposes
 	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
@@ -69,7 +127,7 @@ func (user *User) newTokens() (Tokens, error) {
 	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
 
 	// Insert the encoded tokens into the db
-	_, err := DB.Exec("INSERT INTO Sessions (UserID, Token, CSRFtoken) VALUES (?, ?, ?)", user.ID, Token, CSRFtoken)
+	_, err := DB.Exec("INSERT INTO Sessions (UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?)", user.ID, Token, CSRFtoken, user.DeviceInfo)
 
 	return Tokens{
 		Token,

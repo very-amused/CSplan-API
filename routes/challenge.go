@@ -186,7 +186,7 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	// At this point, the challenge is successful and the user is authorized
 	// Create new tokens
 	DB.Exec("DELETE FROM Challenges WHERE ID = ?", challenge.ID)
-	tokens, err := user.newTokens()
+	tokens, err := user.newSession()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return

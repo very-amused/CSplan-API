@@ -75,7 +75,9 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Select the user's ID based on their email
 	DB.Get(&user, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
-	tokens, err := user.newTokens()
+	// Parse the user's device info and create a new session
+	user.parseDeviceInfo(r)
+	tokens, err := user.newSession()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
