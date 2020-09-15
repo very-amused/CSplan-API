@@ -12,5 +12,6 @@ CSplan - go backend
 - [x] AES challenge based auth
 - [x] Auth bypass CLI flag (with warning)
 - [x] Add privacy settings (ip logging, reminders)
-- [ ] Add session management
+- [x] Add session management
 - [ ] Optimize storage efficiency of tokens
+- [ ] Patch structs should use pointers so empty strings, etc aren't omitted

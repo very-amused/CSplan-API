@@ -57,9 +57,14 @@ type useragentMatch struct {
 	name  string
 	regex *regexp.Regexp
 }
+
+// User agent browser info
 type uaBrowser useragentMatch
+
+// User agent OS info
 type uaOS useragentMatch
 
+// The order of these is VERY SPECIFIC... Opera user agents will match for Opera, Chrome and Safari, Chrome user agents will match for both Chrome and Safari, so these regexes must be checked in the order presented to not incorrectly identify Opera and Chrome as Safari, or Opera as Chrome
 var browsers = []uaBrowser{
 	uaBrowser{
 		name:  "Firefox",
@@ -73,6 +78,22 @@ var browsers = []uaBrowser{
 	uaBrowser{
 		name:  "Safari",
 		regex: regexp.MustCompile("Safari")}}
+var operatingSystems = []uaOS{
+	uaOS{
+		name:  "iPhone",
+		regex: regexp.MustCompile("iPhone")}, // iPhones MUST be tried to match before MacOS, due to the fact that their user agents often contain "like Mac OS X"
+	uaOS{
+		name:  "Android",
+		regex: regexp.MustCompile("Android")},
+	uaOS{
+		name:  "Windows",
+		regex: regexp.MustCompile("Windows|NT")},
+	uaOS{
+		name:  "MacOS",
+		regex: regexp.MustCompile("Macintosh|Mac|OS X")},
+	uaOS{
+		name:  "Linux",
+		regex: regexp.MustCompile("Linux")}}
 
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
@@ -98,7 +119,7 @@ func (user *User) parseDeviceInfo(r *http.Request) {
 		parts := strings.Split(ip, ":")
 		ip = strings.Join(parts[:len(parts)-1], ":")
 	} else {
-		ip = "(disabled)"
+		ip = "Disabled"
 	}
 
 	// Get user operating system via regex matching for useragent string
@@ -116,7 +137,17 @@ func (user *User) parseDeviceInfo(r *http.Request) {
 	}
 
 	// TODO: Repeat the same process for parsing the user's OS
-	os := "Unknown"
+	var os string
+	for _, o := range operatingSystems {
+		if o.regex.MatchString(userAgent) {
+			os = o.name
+			break
+		}
+	}
+	// If no OS was able to be parsed, set as Unknown
+	if len(os) == 0 {
+		os = "Unknown"
+	}
 
 	user.DeviceInfo = fmt.Sprintf("%s,%s,%s", ip, browser, os)
 }

@@ -184,6 +184,7 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	}
 
 	// At this point, the challenge is successful and the user is authorized
+	user.parseDeviceInfo(r)
 	// Create new tokens
 	DB.Exec("DELETE FROM Challenges WHERE ID = ?", challenge.ID)
 	tokens, err := user.newSession()
