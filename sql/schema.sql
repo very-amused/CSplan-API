@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 
 CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
 	UserID bigint unsigned NOT NULL,
-	AuthKey blob NOT NULL
+	AuthKey blob NOT NULL,
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
 -- User authentication and session information
@@ -21,9 +22,28 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Sessions (
 	Token tinytext NOT NULL,
 	CSRFtoken tinytext NOT NULL,
 	_Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
-	DeviceInfo tinytext NOT NULL DEFAULT ''
+	DeviceInfo tinytext NOT NULL DEFAULT '',
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
+-- User privacy settings
+CREATE TABLE IF NOT EXISTS CSplanGo.Settings (
+	UserID bigint unsigned NOT NULL,
+	EnableIPLogging boolean NOT NULL DEFAULT 0,
+	EnableReminders boolean NOT NULL DEFAULT 0,
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
+
+-- Automatically create a default set of settings when a user registers their account (all privacy releases are kept off by default)
+delimiter |
+CREATE TRIGGER IF NOT EXISTS CSplanGo.CreateSettings
+	AFTER INSERT ON CSplanGo.Users FOR EACH ROW
+	BEGIN
+		INSERT INTO CSplanGo.Settings (UserID) VALUES (NEW.ID);
+	END |
+delimiter ;
+
+-- Tokens used for a user to confirm their account's deletion
 CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
 	UserID bigint unsigned NOT NULL,
 	Token tinytext NOT NULL,
@@ -31,17 +51,18 @@ CREATE TABLE IF NOT EXISTS CSplanGo.DeleteTokens (
 	PRIMARY KEY (UserID) -- Only one deletetoken can be stored for a user at a time
 );
 
+-- Challenge's used to authenticate users
 CREATE TABLE IF NOT EXISTS CSplanGo.Challenges (
   ID bigint unsigned NOT NULL,
   UserID bigint unsigned NOT NULL,
   _Data blob NOT NULL,
-  Failed boolean DEFAULT 0,
+  Failed boolean NOT NULL DEFAULT 0,
   _Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
   PRIMARY KEY (ID),
   FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
--- Create event for clearing delete tokens older than 5min
+-- Clear delete tokens older than 5 minutes
 delimiter |
 CREATE EVENT IF NOT EXISTS CSplanGo.ClearDeleteTokens
 	ON SCHEDULE EVERY 1 MINUTE

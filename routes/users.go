@@ -84,15 +84,22 @@ func (user *User) exists() bool {
 // parse the user's device info in the form of ip,browser,os
 // (colons can't be used as separators because of ipv6 addresses)
 func (user *User) parseDeviceInfo(r *http.Request) {
-	// Parse user ip address
-	// TODO: create setting for users to opt out of  ip address association with sessions
+	// Check if user has consented to ip logging
+	var hasUserConsent bool
 	var ip string
-	if ip = r.Header.Get("X-Forwarded-For"); len(ip) == 0 {
-		ip = r.RemoteAddr
+	DB.Get(&hasUserConsent, "SELECT EnableIPLogging FROM Settings WHERE UserID = ?", user.ID)
+	// Parse user ip address
+	if hasUserConsent {
+		// Check X-FORWARDED-FOR header, then fallback to raw address if that fails
+		if ip = r.Header.Get("X-Forwarded-For"); len(ip) == 0 {
+			ip = r.RemoteAddr
+		}
+		// Trim the port from the ip
+		parts := strings.Split(ip, ":")
+		ip = strings.Join(parts[:len(parts)-1], ":")
+	} else {
+		ip = "(disabled)"
 	}
-	// Trim the port from the ip
-	parts := strings.Split(ip, ":")
-	ip = strings.Join(parts[:len(parts)-1], ":")
 
 	// Get user operating system via regex matching for useragent string
 	var userAgent = r.Header.Get("User-Agent")

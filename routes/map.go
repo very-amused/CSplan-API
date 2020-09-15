@@ -73,6 +73,13 @@ func init() {
 		handler:   UpdateKeys,
 		AuthLevel: 1}
 
+	Map["GET:/settings"] = &Route{
+		handler:   GetSettings,
+		AuthLevel: 1}
+	Map["PATCH:/settings"] = &Route{
+		handler:   UpdateSettings,
+		AuthLevel: 1}
+
 	Map["POST:/name"] = &Route{
 		handler:   AddName,
 		AuthLevel: 1}

@@ -11,5 +11,6 @@ CSplan - go backend
 - [x] CRUD no list todos
 - [x] AES challenge based auth
 - [x] Auth bypass CLI flag (with warning)
+- [x] Add privacy settings (ip logging, reminders)
 - [ ] Add session management
 - [ ] Optimize storage efficiency of tokens
