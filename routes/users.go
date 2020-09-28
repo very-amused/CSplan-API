@@ -273,6 +273,7 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			"DELETE FROM Sessions WHERE UserID = ?",
 			"DELETE FROM Challenges WHERE UserID = ?",
 			"DELETE FROM NoList WHERE UserID = ?",
+			"DELETE FROM Settings WHERE UserID = ?",
 			"DELETE FROM Users WHERE ID = ?"}
 		for _, query := range queries {
 			_, err := DB.Exec(query, user)

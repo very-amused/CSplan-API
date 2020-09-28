@@ -193,7 +193,9 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; HttpOnly; Max-Age=%d", tokens.Token, twoWeeks))
+	user.EncodedID = EncodeID(user.ID)
+	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Path=/; HttpOnly; Max-Age=%d", tokens.Token, twoWeeks))
 	json.NewEncoder(w).Encode(map[string]string{
+		"id":        user.EncodedID,
 		"CSRFtoken": tokens.CSRFtoken})
 }

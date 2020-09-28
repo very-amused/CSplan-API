@@ -6,9 +6,12 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha512"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +20,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/net/http2"
 
 	"github.com/very-amused/CSplan-API/routes"
 )
@@ -133,7 +137,9 @@ func DoRequest(
 		// Format an error based on status if no response message is given
 		if len(httpErr.Message) == 0 {
 			httpErr.Status = r.StatusCode
-			httpErr.Message = fmt.Sprintf("Expected status %d, received status %d", expectedStatus, httpErr.Status)
+			// Read raw response body
+			body, _ := ioutil.ReadAll(r.Body)
+			httpErr.Message = fmt.Sprintf("Expected status %d, received status %d\n%s", expectedStatus, httpErr.Status, string(body))
 		}
 		e = httpErr
 	}
@@ -141,12 +147,26 @@ func DoRequest(
 }
 
 func route(path string) string {
-	return fmt.Sprintf("http://localhost:%d%s", port, path)
+	return fmt.Sprintf("https://localhost:%d%s", port, path)
 }
 
 func TestMain(m *testing.M) {
-	// Initialize http client
-	client = &http.Client{}
+	cert, _ := locateKeys()
+	// Read server certificate into a x509 pool, flagging it as valid
+	crt, err := ioutil.ReadFile(cert)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(crt)
+
+	// Initialize http client and transport
+	tr := &http2.Transport{ // Specify to use an HTTP2 transport
+		TLSClientConfig: &tls.Config{
+			RootCAs:            pool,
+			InsecureSkipVerify: true}} // Certificate host verification is disabled, as these tests will only be run in development, using a self signed cert
+	client = &http.Client{Transport: tr}
+
 	// Create test account
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {

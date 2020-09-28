@@ -51,12 +51,28 @@ func parseFlags() {
 	}
 }
 
+// Return paths for TLS a certificate and key, both named CSplan-API under the directory specified by the env variable CERTSDIR
+// If this variable doesn't exist or point to a valid directory, the program will log the error and exit
+// If this variable points to a valid directory, but this directory does not have the properly named certificate and key files,
+// then the errors related to this problem are trusted to be created when ListenAndServeTLS is called
+func locateKeys() (certPath string, keyPath string) {
+	certsDir := os.Getenv("CERTSDIR")
+	_, err := os.Stat(certsDir)
+	if err != nil {
+		log.Fatal("$CERTSDIR does not contain a valid path.")
+	}
+
+	return certsDir + "/CSplan-API.crt", certsDir + "/CSplan-API.key"
+}
+
 func main() {
 	r := mux.NewRouter()
 	loadMiddleware(r)
 	loadRoutes(r)
 	parseFlags()
+	cert, key := locateKeys()
 
 	fmt.Println("Starting up CSplan API 🚀")
-	log.Fatal(http.ListenAndServe(":3000", r))
+	// TLS is a requirement for HTTP2 compliance
+	log.Fatal(http.ListenAndServeTLS(":3000", cert, key, r))
 }

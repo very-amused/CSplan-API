@@ -11,7 +11,7 @@ import (
 
 var twoWeeks int = 60 * 60 * 24 * 14
 
-var authError Error = Error{
+var authError = Error{
 	Title:   "Unauthorized",
 	Message: "Missing or invalid authorization token(s)",
 	Status:  401}
