@@ -22,7 +22,7 @@ type TodoList struct {
 type TodoItem struct {
 	Title       string   `json:"title" validate:"required,base64"`
 	Description string   `json:"description" validate:"required,base64"`
-	Tags        []string `json:"tags" validate:"omitempty,dive,base64"`
+	Tags        []string `json:"tags" validate:"dive,base64"`
 }
 
 // IndexedMeta - Full meta for all encrypted fields with order
@@ -102,6 +102,13 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Encode items as json
+	for i, item := range list.Items {
+		if len(item.Tags) == 0 {
+			list.Items[i].Tags = make([]string, 0) // This is really dumb, golang json lib bad
+			// For clarity, go's json lib will serialize any empty primitive array as null unless you check each it and manually call make with a value of 0
+			// I don't know who thought this was a good idea, I don't know how this hasn't been patched yet, but this is really, really dumb
+		}
+	}
 	m, err := json.Marshal(list.Items)
 	encoded := string(m)
 
@@ -320,8 +327,8 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			}
 		} else if n < o {
 			// (n, o]
-			for i := n + 1; i <= o; i++ {
-				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, todos[i-1])
+			for i := n; i < o; i++ {
+				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i+1, todos[i])
 				if err != nil {
 					HTTPInternalServerError(w, err)
 					return
