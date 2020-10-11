@@ -27,11 +27,10 @@ func dsn() string {
 func init() {
 	db, err := sqlx.Connect("mysql", dsn())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to MariaDB:\n%s", err)
 	}
 	DB = db
 	DB.MapperFunc(func(s string) string {
 		return s
 	}) // Disable automatic mapping of column names to lowercase (both columns and structs are in PascalCase)
-	DB.SetMaxIdleConns(1)
 }

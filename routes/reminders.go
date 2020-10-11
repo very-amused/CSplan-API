@@ -31,7 +31,7 @@ func StopTickers() {
 
 func init() {
 	if _, err := rdb.Ping().Result(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to redis:\n%s", err)
 	}
 
 	// Set caching and query functions on tickers, and run each in its own goroutine
