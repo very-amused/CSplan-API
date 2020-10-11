@@ -22,6 +22,7 @@ type TodoList struct {
 type TodoItem struct {
 	Title       string   `json:"title" validate:"required,base64"`
 	Description string   `json:"description" validate:"required,base64"`
+	Done        string   `json:"done"` // This is in reality a boolean, but it is an encrypted one, so we store it as a string
 	Tags        []string `json:"tags" validate:"dive,base64"`
 }
 

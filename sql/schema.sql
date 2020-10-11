@@ -139,3 +139,12 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Tags (
 	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
+
+CREATE TABLE IF NOT EXISTS CSplanGo.Reminders (
+	ID bigint unsigned NOT NULL,
+	UserID bigint unsigned NOT NULL,
+	Title tinyblob NOT NULL DEFAULT '',
+	_Timestamp bigint unsigned NOT NULL DEFAULT (UNIX_TIMESTAMP() + 300),
+	PRIMARY KEY (ID),
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
