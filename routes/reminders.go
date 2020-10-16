@@ -17,6 +17,9 @@ var rdb = redis.NewClient(&redis.Options{
 	Password: "", // TODO: implement password
 	DB:       0})
 
+// EnableRedis - Use/connect to redis (which is not needed at this stage in development)
+var EnableRedis bool
+
 // Two tickers are stored, one to move upcoming reminders to the redis cache, and the other to notify users at the timestamp of areminder
 var cacheTicker *time.Ticker
 var queryTicker *time.Ticker
@@ -30,6 +33,10 @@ func StopTickers() {
 }
 
 func init() {
+	if !EnableRedis {
+		return
+	}
+
 	if _, err := rdb.Ping().Result(); err != nil {
 		log.Fatalf("Failed to connect to redis:\n%s", err)
 	}
@@ -64,6 +71,7 @@ func init() {
 // Reminder - A reminder for a user
 type Reminder struct {
 	ID        uint   `json:"-"`
+	EncodedID string `json:"id"`
 	UserID    uint   `json:"-"`
 	Title     string `json:"title" validate:"required"`
 	Timestamp uint   `json:"timestamp"`
@@ -79,8 +87,8 @@ func (reminder *Reminder) insert() error {
 		return err
 	}
 
-	_, err := DB.Exec("INSERT INTO Reminders (UserID, Title, Timestamp) VALUES (?, ?, ?)",
-		reminder.UserID, reminder.Title, reminder.Timestamp)
+	_, err := DB.Exec("INSERT INTO Reminders (ID, UserID, Title, Timestamp) VALUES (?, ?, ?)",
+		reminder.ID, reminder.UserID, reminder.Title, reminder.Timestamp)
 	return err
 }
 
@@ -93,7 +101,9 @@ func cacheReminders() {
 	for rows.Next() {
 		var reminder Reminder
 		rows.Scan(&reminder)
-		reminder.insert()
+		if err := reminder.insert(); err != nil {
+			log.Printf("Error caching reminder with id %d: %s\n", reminder.ID, err)
+		}
 	}
 }
 

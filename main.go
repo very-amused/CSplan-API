@@ -43,6 +43,7 @@ func loadMiddleware(r *mux.Router) {
 func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
 	flag.BoolVar(&routes.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
+	flag.BoolVar(&routes.EnableRedis, "enable-redis", false, "Use and connect to redis (not needed in production atm).")
 	flag.Parse()
 	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
 		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
@@ -68,8 +69,8 @@ func locateKeys() (certPath string, keyPath string) {
 func main() {
 	r := mux.NewRouter()
 	loadMiddleware(r)
-	loadRoutes(r)
 	parseFlags()
+	loadRoutes(r)
 	cert, key := locateKeys()
 
 	fmt.Println("Starting up CSplan API 🚀")
