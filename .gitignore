@@ -11,3 +11,5 @@
 
 # Ignore all .env files
 *.env
+# Ignore all .log files
+*.log

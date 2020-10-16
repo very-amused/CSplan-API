@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/very-amused/CSplan-API/middleware"
 
@@ -14,6 +15,10 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+var logfile string
+
+const maxLogfileSize int64 = 500000
 
 func loadRoutes(r *mux.Router) {
 	for key, route := range routes.Map {
@@ -38,12 +43,16 @@ func loadRoutes(r *mux.Router) {
 func loadMiddleware(r *mux.Router) {
 	r.Use(middleware.SetContentType)
 	r.Use(middleware.CORS)
+	if len(logfile) > 0 {
+		middleware.SetupLogger(logfile)
+	}
 }
 
 func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
 	flag.BoolVar(&routes.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
 	flag.BoolVar(&routes.EnableRedis, "enable-redis", false, "Use and connect to redis (not needed in production atm).")
+	flag.StringVar(&logfile, "logfile", "", "File path for logging output. (rotation is handled in-house, old log files will be timestamped)")
 	flag.Parse()
 	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
 		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
@@ -68,12 +77,18 @@ func locateKeys() (certPath string, keyPath string) {
 
 func main() {
 	r := mux.NewRouter()
-	loadMiddleware(r)
 	parseFlags()
+	loadMiddleware(r)
 	loadRoutes(r)
 	cert, key := locateKeys()
 
-	fmt.Println("Starting up CSplan API 🚀")
+	srv := http.Server{
+		Addr:         ":3000",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second * 10,
+		Handler:      r}
+
+	log.Println("Starting up CSplan API 🚀")
 	// TLS is a requirement for HTTP2 compliance
-	log.Fatal(http.ListenAndServeTLS(":3000", cert, key, r))
+	log.Fatal(srv.ListenAndServeTLS(cert, key))
 }

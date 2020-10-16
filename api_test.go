@@ -61,7 +61,9 @@ var (
 		Items: []routes.TodoItem{
 			routes.TodoItem{
 				Title:       encode("Item 1"),
-				Description: encode("Sample Description")}},
+				Description: encode("Sample Description"),
+				Done:        encode("false"),
+				Tags:        make([]string, 0)}},
 		Meta: routes.IndexedMeta{
 			CryptoKey: encode("EncryptedKey")}}
 	listPatch = routes.TodoPatch{

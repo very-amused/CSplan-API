@@ -124,7 +124,7 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Get checksum
 	var Checksum string
-	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
+	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ?", list.ID)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return

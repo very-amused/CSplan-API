@@ -25,8 +25,7 @@ func SetContentType(next http.Handler) http.Handler {
 // SetConnection - Set the connection header to Keep-Alive if not using HTTP 2.0 (where this behavior is implied)
 func SetConnection(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		majorVer, _, _ := http.ParseHTTPVersion(r.Proto)
-		if majorVer != 2 {
+		if r.ProtoMajor != 2 {
 			w.Header().Set("Connection", "Keep-Alive")
 		}
 		next.ServeHTTP(w, r)
