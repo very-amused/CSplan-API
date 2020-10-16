@@ -9,10 +9,10 @@ for file in routes/*.go; do
 	i=0
 	while read line; do
 		i=$((i+1)) # Keep track of line number
-		if [[ "$line" =~ DB\.Query ]]; then
+		if [[ "$line" =~ DB\.Query\(.*\) ]]; then
 			open=true
 			open_line=$i
-		elif [[ "$line" =~ '.Close()' ]]; then
+		elif [[ "$line" =~ \.Close\(\) ]]; then
 			open=false
 		elif [[ "$line" == '}' && "$open" == 'true' ]]; then
 			exit=1

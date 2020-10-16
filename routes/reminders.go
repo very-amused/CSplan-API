@@ -38,13 +38,14 @@ func init() {
 	cacheTicker = time.NewTicker(time.Minute)
 	queryTicker = time.NewTicker(time.Second)
 
+	// TODO: implement error logging in reminder goroutines
 	go func() {
 		for {
 			select {
 			case <-done:
 				return
 			case <-cacheTicker.C:
-				cacheReminders()
+				go cacheReminders()
 			}
 		}
 	}()
@@ -54,7 +55,7 @@ func init() {
 			case <-done:
 				return
 			case <-queryTicker.C:
-				queryReminders(time.Now().Unix())
+				go queryReminders(time.Now().Unix())
 			}
 		}
 	}()
@@ -65,7 +66,6 @@ type Reminder struct {
 	ID        uint   `json:"-"`
 	UserID    uint   `json:"-"`
 	Title     string `json:"title" validate:"required"`
-	Sent      bool   `json:"-"`
 	Timestamp uint   `json:"timestamp"`
 }
 
@@ -102,34 +102,20 @@ func cacheReminders() {
 func queryReminders(now int64) {
 	// Select all reminders scheduled for now
 	values, _ := rdb.LRange(fmt.Sprintf("Reminders:%d", now), 0, -1).Result()
-	reminders := make([]Reminder, len(values))
-	for i, v := range values {
+	for _, v := range values {
 		var reminder Reminder
 		// Decode each key from json
 		json.Unmarshal([]byte(v), &reminder)
-		reminders[i] = reminder
 		// TODO: implement push notifications
 
-		// If the notification is sent successfully, flag the reminder for deletion, else postpone it by 5 minutes
-		if true {
-			reminders[i].Sent = true
+		// If the notification is sent successfully, defer its deletion, else postpone it by 5 minutes
+		if true { // TODO: replace with check if webpush notif was sent successfully
+			defer DB.Exec("DELETE FROM Reminders WHERE ID = ?", reminder.ID)
 		} else {
-			reminders[i].Sent = false
-			reminders[i].Timestamp += 300
+			defer DB.Exec("UPDATE Reminders SET Timestamp = ? WHERE ID = ?", reminder.Timestamp+300, reminder.ID)
 		}
 	}
 
 	// Delete all of these reminders from redis
 	rdb.Del(fmt.Sprintf("Reminders:%d", now))
-	// Delete all successfully sent reminders from mariadb, postpone all unsuccessful ones
-	for _, r := range reminders {
-		go func(r Reminder) {
-			var err error
-			if r.Sent {
-				_, err = DB.Exec("DELETE FROM Reminders WHERE ID = ?", r.ID)
-			} else if !r.Sent || err != nil {
-				DB.Exec("UPDATE Reminders SET Timestamp = ? WHERE ID = ?", r.Timestamp, r.ID)
-			}
-		}(r)
-	}
 }
