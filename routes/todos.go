@@ -3,8 +3,10 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -243,36 +245,39 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Existence + ownership check
-	exists := 0
-	DB.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?",
-		id, user)
-	if exists != 1 {
+	rows, _ := DB.Query("SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	defer rows.Close()
+	if !rows.Next() {
 		HTTPNotFoundError(w)
 		return
 	}
 
 	// Patch only the fields specified in the request
-	errs := make([]error, 4)
+	var updates []string
+	var args []interface{}
 	if len(patch.Title) > 0 {
-		_, err = DB.Exec("UPDATE TodoLists SET Title = FROM_BASE64(?) WHERE ID = ?", patch.Title, id)
-		errs = append(errs, err)
+		updates = append(updates, "Title = FROM_BASE64(?)")
+		args = append(args, patch.Title)
 	}
 	if patch.Items != nil {
-		m, err := json.Marshal(patch.Items)
-		encoded := string(m)
-		if err != nil {
-			return
+		// Avoid being encoded as null
+		if len(patch.Items) == 0 {
+			patch.Items = make([]TodoItem, 0)
 		}
-		errs = append(errs, err)
-		_, err = DB.Exec("UPDATE TodoLists SET Items = ? WHERE ID = ?", encoded, id)
-		errs = append(errs, err)
+		m, _ := json.Marshal(patch.Items)
+		encoded := string(m)
+		updates = append(updates, "Items = ?")
+		args = append(args, encoded)
 	}
 	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = DB.Exec("UPDATE TodoLists SET CryptoKey = FROM_BASE64(?) WHERE ID = ?", patch.Meta.CryptoKey, id)
-		errs = append(errs, err)
+		updates = append(updates, "CryptoKey = FROM_BASE64(?)")
+		args = append(args, patch.Meta.CryptoKey)
 	}
-	// Handle any errors encountered during the patch
-	for _, err := range errs {
+	// Perform the patch as a single query
+	if len(updates) > 0 {
+		query := fmt.Sprintf("UPDATE TodoLists SET %s WHERE ID = ?", strings.Join(updates, ", "))
+		args = append(args, id)
+		_, err := DB.Exec(query, args...)
 		if err != nil {
 			HTTPInternalServerError(w, err)
 			return
