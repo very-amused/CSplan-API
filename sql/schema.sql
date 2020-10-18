@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Reminders (
 	ID bigint unsigned NOT NULL,
 	UserID bigint unsigned NOT NULL,
 	Title tinyblob NOT NULL DEFAULT '',
+	RetryInterval mediumint unsigned NOT NULL DEFAULT 300 CHECK(RetryInterval <= 86400), -- How long the server should wait before retrying a failed notification in seconds (may be up to 24 hours)
 	_Timestamp bigint unsigned NOT NULL DEFAULT (UNIX_TIMESTAMP() + 300),
 	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)

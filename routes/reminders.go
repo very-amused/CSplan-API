@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -23,16 +24,10 @@ var EnableRedis bool
 // Two tickers are stored, one to move upcoming reminders to the redis cache, and the other to notify users at the timestamp of areminder
 var cacheTicker *time.Ticker
 var queryTicker *time.Ticker
-var done = make(chan bool)
-
-// StopTickers - Stop all tickers related to reminders gracefully
-func StopTickers() {
-	cacheTicker.Stop()
-	queryTicker.Stop()
-	done <- true
-}
 
 func init() {
+	flag.BoolVar(&EnableRedis, "enable-redis", false, "Use and connect to redis (not needed in production atm).")
+	flag.Parse()
 	if !EnableRedis {
 		return
 	}
@@ -49,8 +44,6 @@ func init() {
 	go func() {
 		for {
 			select {
-			case <-done:
-				return
 			case <-cacheTicker.C:
 				go cacheReminders()
 			}
@@ -59,8 +52,6 @@ func init() {
 	go func() {
 		for {
 			select {
-			case <-done:
-				return
 			case <-queryTicker.C:
 				go queryReminders(time.Now().Unix())
 			}
@@ -68,13 +59,22 @@ func init() {
 	}()
 }
 
-// Reminder - A reminder for a user
+// Reminder - A reminder for a user (human friendly form)
 type Reminder struct {
-	ID        uint   `json:"-"`
-	EncodedID string `json:"id"`
-	UserID    uint   `json:"-"`
-	Title     string `json:"title" validate:"required"`
-	Timestamp uint   `json:"timestamp"`
+	ID         uint   `json:"-"`
+	EncodedID  string `json:"id"`
+	UserID     uint   `json:"-"`
+	Title      string `json:"title" validate:"required"`
+	Timestamp  uint   `json:"timestamp" db:"_Timestamp"`
+	RetryAfter uint   `json:"retryAfter" validate:"max=86400"`
+}
+
+// RedisFriendlyReminder - A reminder for a user (redis encoding/decoding friendly form)
+type RedisFriendlyReminder struct {
+	Reminder
+	ID        uint   `json:"id"`
+	EncodedID string `json:"-"`
+	UserID    uint   `json:"userID"`
 }
 
 func (reminder *Reminder) insert() error {
@@ -87,7 +87,7 @@ func (reminder *Reminder) insert() error {
 		return err
 	}
 
-	_, err := DB.Exec("INSERT INTO Reminders (ID, UserID, Title, Timestamp) VALUES (?, ?, ?)",
+	_, err := DB.Exec("INSERT INTO Reminders (ID, UserID, Title, _Timestamp, RetryAfter) VALUES (?, ?, ?, ?)",
 		reminder.ID, reminder.UserID, reminder.Title, reminder.Timestamp)
 	return err
 }
@@ -96,10 +96,10 @@ func (reminder *Reminder) insert() error {
 // (they still should stay in MariaDB until they're deleted by queryReminders)
 // This should be called once every minute
 func cacheReminders() {
-	rows, _ := DB.Query("SELECT UserID, Title, Timestamp FROM Reminders WHERE Timestamp - UNIX_TIMESTAMP() <= 300")
+	rows, _ := DB.Query("SELECT UserID, Title, _Timestamp FROM Reminders WHERE _Timestamp - UNIX_TIMESTAMP() <= 300")
 	defer rows.Close()
 	for rows.Next() {
-		var reminder Reminder
+		var reminder RedisFriendlyReminder
 		rows.Scan(&reminder)
 		if err := reminder.insert(); err != nil {
 			log.Printf("Error caching reminder with id %d: %s\n", reminder.ID, err)
@@ -113,16 +113,17 @@ func queryReminders(now int64) {
 	// Select all reminders scheduled for now
 	values, _ := rdb.LRange(fmt.Sprintf("Reminders:%d", now), 0, -1).Result()
 	for _, v := range values {
-		var reminder Reminder
+		var reminder RedisFriendlyReminder
 		// Decode each key from json
 		json.Unmarshal([]byte(v), &reminder)
 		// TODO: implement push notifications
 
-		// If the notification is sent successfully, defer its deletion, else postpone it by 5 minutes
-		if true { // TODO: replace with check if webpush notif was sent successfully
+		// If the notification is sent successfully AND confirmed, defer its deletion, else postpone it by the user specified time
+		if true { // TODO: replace with check if webpush notif was sent successfully and not postponed
 			defer DB.Exec("DELETE FROM Reminders WHERE ID = ?", reminder.ID)
 		} else {
-			defer DB.Exec("UPDATE Reminders SET Timestamp = ? WHERE ID = ?", reminder.Timestamp+300, reminder.ID)
+			defer DB.Exec("UPDATE Reminders SET _Timestamp = ? WHERE ID = ?",
+				reminder.Timestamp+reminder.RetryAfter, reminder.ID)
 		}
 	}
 

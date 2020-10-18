@@ -4,20 +4,21 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
+// How big a single logfile is permitted to grow
 const maxLogfileSize int64 = 500000
 
-// How often the logfile is rotated
+// How often the logfile's size is checked
 const rotationPeriod = time.Hour
 
-var done = make(chan bool)
 var outfile *os.File
 
 func getTimestamp() string {
 	now := time.Now()
-	return fmt.Sprintf("%d-%d-%d_%d-%d-%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second())
+	return fmt.Sprintf("%d-%d-%d_%d:%d:%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second())
 }
 
 // RotateLogs - Make sure the logger is working with a fresh, reasonably small logfile
@@ -28,7 +29,17 @@ func RotateLogs(logfile string) {
 	if err == nil && stat.Size() > maxLogfileSize {
 		outfile.Close()
 		stamp := getTimestamp()
-		err := os.Rename(logfile, fmt.Sprintf("%s_%s", logfile, stamp))
+		// Split logfile extension
+		parts := strings.Split(logfile, ".")
+		if len(parts) > 2 {
+			parts[1] = ""
+		} else {
+			// Append dot to extension
+			parts[1] = "." + parts[1]
+		}
+
+		// Archive old logfile
+		err := os.Rename(logfile, fmt.Sprintf("%s_%s%s", parts[0], stamp, parts[1]))
 		if err != nil {
 			log.SetOutput(os.Stdout)
 			log.Fatal("Unable to archive logfile:", err)
@@ -52,16 +63,8 @@ func SetupLogger(logfile string) {
 	ticker := time.NewTicker(rotationPeriod)
 	go func() {
 		select {
-		case <-done:
-			outfile.Close()
-			return
 		case <-ticker.C:
 			RotateLogs(logfile)
 		}
 	}()
-}
-
-// CloseLogger - Gracefully close the logger's file output
-func CloseLogger() {
-	done <- true
 }

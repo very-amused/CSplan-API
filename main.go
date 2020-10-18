@@ -18,8 +18,6 @@ import (
 
 var logfile string
 
-const maxLogfileSize int64 = 500000
-
 func loadRoutes(r *mux.Router) {
 	for key, route := range routes.Map {
 		// Parse method and path from route key
@@ -51,7 +49,6 @@ func loadMiddleware(r *mux.Router) {
 func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
 	flag.BoolVar(&routes.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
-	flag.BoolVar(&routes.EnableRedis, "enable-redis", false, "Use and connect to redis (not needed in production atm).")
 	flag.StringVar(&logfile, "logfile", "", "File path for logging output. (rotation is handled in-house, old log files will be timestamped)")
 	flag.Parse()
 	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
