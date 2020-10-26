@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,25 @@ type TodoList struct {
 	Title     string      `json:"title" validate:"required,base64,max=255"`
 	Items     []TodoItem  `json:"items" validate:"required,dive"`
 	Meta      IndexedMeta `json:"meta" validate:"required"`
+}
+
+// SortableLists - A sortable array of todo lists
+type SortableLists []TodoList
+
+func (lists SortableLists) Len() int {
+	return len(lists)
+}
+func (lists SortableLists) Less(i, j int) bool {
+	return lists[i].Meta.Index < lists[j].Meta.Index
+}
+func (lists SortableLists) Swap(i, j int) {
+	// We know these values are not nil because a call to less with nil values will never return true and thus trigger a swap
+	old1 := lists[i]
+	old2 := lists[j]
+	old1.Meta.Index = uint(j)
+	old2.Meta.Index = uint(i)
+	lists[j] = old1
+	lists[i] = old2
 }
 
 // TodoItem - A singular todo item belonging to a parent TodoList
@@ -141,19 +161,13 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
-	var max uint
-	err := DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
-	if err != nil {
-		json.NewEncoder(w).Encode(make([]TodoList, 0))
-		return
-	}
-	rows, err := DB.Query("SELECT ID, TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE UserID = ?", user)
+	rows, err := DB.Query("SELECT ID, TO_BASE64(Title), Items, _Index, TO_BASE64(CryptoKey), SHA(CONCAT(Title, Items)) FROM TodoLists WHERE UserID = ?", user)
 	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	lists := make([]TodoList, max+1)
+	var lists SortableLists
 
 	for rows.Next() {
 		var list TodoList
@@ -170,8 +184,17 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		lists[list.Meta.Index] = list
-		lists[list.Meta.Index].EncodedID = EncodeID(list.ID)
+		list.EncodedID = EncodeID(list.ID)
+		lists = append(lists, list)
+	}
+
+	sort.Sort(lists)
+	// Ensure that each index property is accurate
+	for i, list := range lists {
+		if list.Meta.Index != uint(i) {
+			lists[i].Meta.Index = uint(i)
+			DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, list.ID)
+		}
 	}
 
 	json.NewEncoder(w).Encode(lists)
