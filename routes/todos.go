@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -161,13 +160,23 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	user := ctx.Value(key("user")).(uint)
 
+	var max int
+	DB.Get(&max, "SELECT Max(_Index) FROM TodoLists WHERE UserID = ?", user)
+
 	rows, err := DB.Query("SELECT ID, TO_BASE64(Title), Items, _Index, TO_BASE64(CryptoKey), SHA(CONCAT(Title, Items)) FROM TodoLists WHERE UserID = ?", user)
 	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
-	var lists SortableLists
+
+	// A slice of slice pointers is used here as a solution to 2 problems
+	// 1. If a single depth slice is used and there are index collisions in the db, then overwrites will occur and effectively render a list unaccessable
+	// 2. If pointers are not used, then gaps in indexes (nil values in the parent slice) are unable to be checked for
+	// This allows for lists to effectively be sorted in such a way that they later can be copied to a single-depth slice for encoding, while also
+	// fixing index collisions/gaps in deferred SQL statements
+	// This solution is much faster than simply appending and then implementing a sort algorithm
+	var lists = make([]*[]TodoList, max+1)
 
 	for rows.Next() {
 		var list TodoList
@@ -185,19 +194,36 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 
 		list.EncodedID = EncodeID(list.ID)
-		lists = append(lists, list)
-	}
-
-	sort.Sort(lists)
-	// Ensure that each index property is accurate
-	for i, list := range lists {
-		if list.Meta.Index != uint(i) {
-			lists[i].Meta.Index = uint(i)
-			DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i, list.ID)
+		i := list.Meta.Index
+		// Append the list to the subslice at index i
+		if lists[i] != nil {
+			*lists[i] = append(*lists[i], list)
+		} else {
+			lists[i] = &[]TodoList{list}
 		}
 	}
 
-	json.NewEncoder(w).Encode(lists)
+	// Validate and fix index collisions
+	var final []TodoList
+	var k int
+	for i := 0; i < len(lists); i++ {
+		if lists[i] == nil {
+			continue
+		}
+
+		for j := 0; j < len(*lists[i]); j++ {
+			final = append(final, (*lists[i])[j])
+			// Defer updating any inaccurate indexes in the db
+			if final[k].Meta.Index != uint(k) {
+				defer DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", k, final[k].ID)
+			}
+			k++
+		}
+		// Immediately free the memory occupied by this subslice
+		lists[i] = nil
+	}
+
+	json.NewEncoder(w).Encode(final)
 }
 
 // GetTodo - Retrieve a single todo list by id
@@ -319,52 +345,56 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	n := patch.Meta.Index
 	o := state.Index
 	if n != o {
-		// Create an array of ids for all todos belonging to the user
-		var max int
-		err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+		// Initiate a transaction, so if any step fails, things are not left in a broken state
+		tx, err := DB.Beginx()
 		if err != nil {
 			HTTPInternalServerError(w, err)
 			return
 		}
+		defer tx.Rollback()
 
-		// Copy
-		todos := make([]uint, max+1)
-		for i := 0; i <= max; i++ {
-			err = DB.Get(&todos[i], "SELECT ID FROM TodoLists WHERE _Index = ?", i)
-			if err != nil {
-				HTTPInternalServerError(w, err)
-				return
-			}
-		}
-
-		// Substitute
-		_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, todos[o])
+		// Select a map of index -> id
+		ids := make(map[uint]uint)
+		rows, err := DB.Query("SELECT ID, _Index FROM TodoLists WHERE UserID = ?", user)
+		defer rows.Close()
 		if err != nil {
 			HTTPInternalServerError(w, err)
 			return
+		}
+		for rows.Next() {
+			var id, index uint
+			rows.Scan(&id, &index)
+			ids[index] = id
 		}
 
 		// Shift
 		if n > o {
 			// (o, n]
 			for i := o + 1; i <= n; i++ {
-				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, todos[i])
+				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, ids[i])
 				if err != nil {
 					HTTPInternalServerError(w, err)
 					return
 				}
 			}
 		} else if n < o {
-			// (n, o]
+			// [n, o)
 			for i := n; i < o; i++ {
-				_, err = DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i+1, todos[i])
+				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i+1, ids[i])
 				if err != nil {
 					HTTPInternalServerError(w, err)
 					return
 				}
 			}
 		}
+		// Update the index of the list itself
+		_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, id)
+		if err != nil {
+			HTTPInternalServerError(w, err)
+			return
+		}
 		state.Index = n
+		tx.Commit()
 	}
 
 	json.NewEncoder(w).Encode(TodoResponse{

@@ -24,7 +24,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 		return 0, authError
 	}
 	csrftoken := r.Header.Get("CSRF-Token")
-	if len(csrftoken) == 0 {
+	if len(csrftoken) == 0 && !AuthBypass {
 		HTTPError(w, authError)
 		return 0, authError
 	}
@@ -48,6 +48,8 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
 		rows.StructScan(&t)
 		if t.Token == token.Value && t.CSRFtoken == csrftoken {
 			return id, nil
+		} else if AuthBypass && t.Token == token.Value { // Allow the skipping of CSRF protection when running in auth bypass mode
+			return id, nil
 		}
 	}
 	HTTPError(w, authError)
@@ -68,7 +70,10 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 	if !user.exists() {
-		HTTPNotFoundError(w)
+		HTTPError(w, Error{
+			Title:   "Not Found",
+			Message: "This user doesn't exist.",
+			Status:  404})
 		return
 	}
 

@@ -6,8 +6,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha512"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -20,7 +18,6 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/pbkdf2"
-	"golang.org/x/net/http2"
 
 	"github.com/very-amused/CSplan-API/routes"
 )
@@ -153,21 +150,7 @@ func route(path string) string {
 }
 
 func TestMain(m *testing.M) {
-	cert, _ := locateKeys()
-	// Read server certificate into a x509 pool, flagging it as valid
-	crt, err := ioutil.ReadFile(cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(crt)
-
-	// Initialize http client and transport
-	tr := &http2.Transport{ // Specify to use an HTTP2 transport
-		TLSClientConfig: &tls.Config{
-			RootCAs:            pool,
-			InsecureSkipVerify: true}} // Certificate host verification is disabled, as these tests will only be run in development, using a self signed cert
-	client = &http.Client{Transport: tr}
+	client = &http.Client{}
 
 	// Create test account
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)

@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -18,17 +17,12 @@ var rdb = redis.NewClient(&redis.Options{
 	Password: "", // TODO: implement password
 	DB:       0})
 
-// EnableRedis - Use/connect to redis (which is not needed at this stage in development)
-var EnableRedis bool
-
 // Two tickers are stored, one to move upcoming reminders to the redis cache, and the other to notify users at the timestamp of areminder
 var cacheTicker *time.Ticker
 var queryTicker *time.Ticker
 
 func init() {
-	flag.BoolVar(&EnableRedis, "enable-redis", false, "Use and connect to redis (not needed in production atm).")
-	flag.Parse()
-	if !EnableRedis {
+	if true {
 		return
 	}
 
@@ -43,18 +37,14 @@ func init() {
 	// TODO: implement error logging in reminder goroutines
 	go func() {
 		for {
-			select {
-			case <-cacheTicker.C:
-				go cacheReminders()
-			}
+			<-cacheTicker.C
+			go cacheReminders()
 		}
 	}()
 	go func() {
 		for {
-			select {
-			case <-queryTicker.C:
-				go queryReminders(time.Now().Unix())
-			}
+			<-queryTicker.C
+			go queryReminders(time.Now().Unix())
 		}
 	}()
 }
