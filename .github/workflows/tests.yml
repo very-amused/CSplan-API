@@ -17,13 +17,14 @@ jobs:
     services:
       mariadb:
         image: mariadb
-        ports:
-          - 3306
         env:
           MYSQL_DATABASE: CSplanGo
           MYSQL_USER: admin
           MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
+        ports:
+          - 3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
       - uses: actions/checkout@v2
       - name: Install Database
-        run: mysql -h 127.0.0.1 -P ${{ job.services.mariadb.ports['3306'] }} -uadmin -p${MARIADB_PASSWORD} < sql/schema.sql
+        run: mysql -h 127.0.0.1 -P ${{ job.services.mariadb.ports[3306] }} -uadmin -p${MARIADB_PASSWORD} < sql/schema.sql
