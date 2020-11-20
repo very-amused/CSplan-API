@@ -8,7 +8,7 @@ import (
 
 // AuthKeyPatch - A patch to update the key used to encrypt a user's authentication challenges
 type AuthKeyPatch struct {
-	AuthKey string `json:"key" validate:"required,base64"`
+	AuthKey string `json:"key" validate:"required,base64,min=32"`
 }
 
 // UpdateAuthKey - Update a user's authentication key

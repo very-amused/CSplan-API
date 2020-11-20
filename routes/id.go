@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 )
 
 // MakeID - Generate a uint ID of a specified number of digits
@@ -27,4 +28,20 @@ func DecodeID(encoded string) (id uint, e error) {
 		bytes = make([]byte, 8) // Ensure there's enough bytes to not choke on Uint64 conversion
 	}
 	return uint(binary.LittleEndian.Uint64(bytes)), err
+}
+
+// MakeUniqueID - Return an ID that is unique at the time of calling, and any database related errors
+// DO NOT CALL THIS WITH USER PROVIDED DATA, THE PROVIDED TABLE NAME IS INTERPOLATED INTO A QUERY WITH NO ESCAPING
+func MakeUniqueID(tableName string) (id uint, e error) {
+	id = MakeID()
+	for {
+		rows, e := DB.Query(fmt.Sprintf("SELECT 1 FROM %s WHERE ID = ?", tableName), id)
+		if !rows.Next() {
+			return id, nil
+		} else if e != nil {
+			return id, e
+		} else {
+			id++
+		}
+	}
 }

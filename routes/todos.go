@@ -88,28 +88,23 @@ func parseID(strID string) (uint, error) {
 // AddTodo - Add a todo list to the database
 func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var list TodoList
+	var err error
 	json.NewDecoder(r.Body).Decode(&list)
-	if err := HTTPValidate(w, list); err != nil {
+	if err = HTTPValidate(w, list); err != nil {
 		return
 	}
 	user := ctx.Value(key("user")).(uint)
 
-	// Generate a random 20 digit id
-	list.ID = MakeID()
-
-	// Enusre the list's ID's uniqueness
-	var exists int
-	for true {
-		err := DB.Get(&exists, "SELECT 1 FROM TodoLists WHERE ID = ?", list.ID)
-		if err != nil {
-			break
-		}
-		list.ID++
+	// Generate a unique ID
+	list.ID, err = MakeUniqueID("TodoLists")
+	if err != nil {
+		HTTPInternalServerError(w, err)
 	}
+	list.EncodedID = EncodeID(list.ID)
 
 	// Figure out list index
 	var max, index uint
-	err := DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		index = 0
 	} else if max == 255 {
@@ -221,6 +216,9 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 		// Immediately free the memory occupied by this subslice
 		lists[i] = nil
+	}
+	if len(final) == 0 {
+		final = make([]TodoList, 0)
 	}
 
 	json.NewEncoder(w).Encode(final)

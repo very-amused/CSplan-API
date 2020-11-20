@@ -18,24 +18,28 @@ type User struct {
 	Email      string `json:"email" validate:"required,email"`
 	Verified   bool   `json:"verified"`
 	DeviceInfo string `json:"-"`
-	AuthKey    string `json:"key"` // The AES-GCM authentication key used to provide encryption challenges for the user
+	AuthKey    string `json:"key" validate:"required"` // The AES-GCM authentication key used to provide encryption challenges for the user
 }
 
 // UserState - State information for a user
 type UserState struct {
-	EncodedID string `json:"id"`
+	EncodedID string `json:"userID"`
 	Verified  bool   `json:"verified"`
 }
 
-// Tokens - Authentication tokens for a user
-type Tokens struct {
-	Token     string `json:"-"`
-	CSRFtoken string
+// Session - Authentication tokens for a user
+type Session struct {
+	ID           uint   `json:"-"`
+	EncodedID    string `json:"id"`
+	RawToken     []byte `json:"-"`
+	Token        string `json:"-"`
+	RawCSRFtoken []byte `json:"-"`
+	CSRFtoken    string
 }
 
 // LoginState - State information for a user as a response to a login request
 type LoginState struct {
-	Tokens
+	Session
 	UserState
 }
 
@@ -152,24 +156,26 @@ func (user *User) parseDeviceInfo(r *http.Request) {
 	user.DeviceInfo = fmt.Sprintf("%s,%s,%s", ip, browser, os)
 }
 
-func (user *User) newSession() (Tokens, error) {
+func (user *User) newSession() (session Session, e error) {
 	// Get the user's ID from the db for identification purposes
 	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+	// Generate a session ID
+	session.ID, e = MakeUniqueID("Sessions")
+	if e != nil {
+		return session, e
+	}
+	session.EncodedID = EncodeID(session.ID)
 
-	tokenBytes := make([]byte, 32)
-	csrftokenBytes := make([]byte, 32)
-	rand.Read(tokenBytes)
-	rand.Read(csrftokenBytes)
+	session.RawToken = make([]byte, 32)
+	session.RawCSRFtoken = make([]byte, 32)
+	rand.Read(session.RawToken)
+	rand.Read(session.RawCSRFtoken)
 
-	Token := fmt.Sprintf("%s:%d", base64.RawURLEncoding.EncodeToString(tokenBytes), user.ID)
-	CSRFtoken := base64.RawURLEncoding.EncodeToString(csrftokenBytes)
-
+	session.Token = base64.RawURLEncoding.EncodeToString(session.RawToken) + ":" + EncodeID(user.ID)
+	session.CSRFtoken = base64.RawURLEncoding.EncodeToString(session.RawCSRFtoken)
 	// Insert the encoded tokens into the db
-	_, err := DB.Exec("INSERT INTO Sessions (UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?)", user.ID, Token, CSRFtoken, user.DeviceInfo)
-
-	return Tokens{
-		Token,
-		CSRFtoken}, err
+	_, e = DB.Exec("INSERT INTO Sessions (ID, UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?, ?)", session.ID, user.ID, session.RawToken, session.RawCSRFtoken, user.DeviceInfo)
+	return session, e
 }
 
 // Register - Create a new account

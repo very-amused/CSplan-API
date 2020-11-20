@@ -34,7 +34,7 @@ func encode(s string) string {
 
 var (
 	client *http.Client
-	auth   routes.Tokens
+	auth   = routes.Session{}
 	user   = routes.User{
 		Email: "user@test.com"}
 	password = []byte("correcthorsebatterystaple")
@@ -117,7 +117,7 @@ func DoRequest(
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if len(auth.Token) > 0 && len(auth.CSRFtoken) > 0 {
+	if len(auth.Token) > 0 {
 		var cookie strings.Builder
 		cookie.WriteString("Authorization=")
 		cookie.WriteString(auth.Token)
@@ -146,13 +146,16 @@ func DoRequest(
 }
 
 func route(path string) string {
-	return fmt.Sprintf("https://localhost:%d%s", port, path)
+	return fmt.Sprintf("http://localhost:%d%s", port, path)
 }
 
 func TestMain(m *testing.M) {
 	client = &http.Client{}
 
 	// Create test account
+	authKey := make([]byte, 32)
+	rand.Read(authKey)
+	user.AuthKey = base64.StdEncoding.EncodeToString(authKey)
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {
 		log.Fatalf("Failed to create test account: %s", err)
@@ -273,8 +276,8 @@ func TestChallengeAuth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var tokens routes.Tokens
-		json.NewDecoder(r.Body).Decode(&tokens)
+		var session routes.Session
+		json.NewDecoder(r.Body).Decode(&session)
 	})
 }
 

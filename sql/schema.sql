@@ -18,11 +18,13 @@ CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
 
 -- User authentication and session information
 CREATE TABLE IF NOT EXISTS CSplanGo.Sessions (
+	ID bigint unsigned NOT NULL,
 	UserID bigint unsigned NOT NULL,
-	Token tinytext NOT NULL,
-	CSRFtoken tinytext NOT NULL,
+	Token tinyblob NOT NULL,
+	CSRFtoken tinyblob NOT NULL,
 	_Timestamp bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),
 	DeviceInfo tinytext NOT NULL DEFAULT '',
+	PRIMARY KEY (ID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 

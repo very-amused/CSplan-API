@@ -2,12 +2,24 @@ package routes
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 )
+
+func compareTokens(provided, correct []byte) (equal bool) {
+	if len(provided) != len(correct) {
+		return false
+	}
+	for i := range correct {
+		if provided[i] != correct[i] {
+			return false
+		}
+	}
+	return true
+}
 
 var twoWeeks int = 60 * 60 * 24 * 14
 
@@ -17,43 +29,63 @@ var authError = Error{
 	Status:  401}
 
 // Authenticate - Authorize and identify a user for a authenticate route.
-func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, e error) {
-	token, err := r.Cookie("Authorization")
+func Authenticate(w http.ResponseWriter, r *http.Request) (id uint, success bool) {
+	var userSession Session
+	tokenCookie, err := r.Cookie("Authorization")
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, authError
+		return 0, false
 	}
-	csrftoken := r.Header.Get("CSRF-Token")
-	if len(csrftoken) == 0 && !AuthBypass {
+	userSession.Token = tokenCookie.Value
+
+	userSession.CSRFtoken = r.Header.Get("CSRF-Token")
+	if len(userSession.CSRFtoken) == 0 && !AuthBypass {
 		HTTPError(w, authError)
-		return 0, authError
+		return 0, false
 	}
 
-	// Parse user id from auth token
-	parsedID, err := strconv.ParseUint(strings.Split(token.Value, ":")[1], 10, 0)
+	// Parse and decode both auth and CSRF tokens
+	tokenParts := strings.Split(userSession.Token, ":")
+	// Make sure there are exactly two segments to the tokens, both to avoid out of range errors and as a proactive guard against malformed tokens
+	if len(tokenParts) != 2 {
+		HTTPError(w, authError)
+		return 0, false
+	}
+	userID, err := DecodeID(tokenParts[1])
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, authError
+		return 0, false
 	}
-	id = uint(parsedID)
+	userSession.RawToken, err = base64.RawURLEncoding.DecodeString(tokenParts[0])
+	if err != nil {
+		HTTPError(w, authError)
+		return 0, false
+	}
+	userSession.RawCSRFtoken, err = base64.RawURLEncoding.DecodeString(userSession.CSRFtoken)
+	if err != nil {
+		HTTPError(w, authError)
+		return 0, false
+	}
 
-	rows, err := DB.Queryx("SELECT Token, CSRFtoken FROM Sessions WHERE UserID = ?", id)
+	rows, err := DB.Query("SELECT Token, CSRFtoken FROM Sessions WHERE UserID = ?", userID)
 	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
-		return 0, err
+		return 0, false
 	}
+
 	for rows.Next() {
-		var t Tokens
-		rows.StructScan(&t)
-		if t.Token == token.Value && t.CSRFtoken == csrftoken {
-			return id, nil
-		} else if AuthBypass && t.Token == token.Value { // Allow the skipping of CSRF protection when running in auth bypass mode
-			return id, nil
+		var session Session
+		rows.Scan(&session.RawToken, &session.RawCSRFtoken)
+		// Compare tokens at a byte sensitive level to ensure they are EXACTLY accurate
+		if compareTokens(userSession.RawToken, session.RawToken) &&
+			(compareTokens(userSession.RawCSRFtoken, session.RawCSRFtoken) || AuthBypass) { // Don't check CSRF tokens if auth bypass is enabled
+			return uint(userID), true
 		}
 	}
+	// If no tokens have matched, the user is not authenticated
 	HTTPError(w, authError)
-	return 0, authError
+	return 0, false
 }
 
 // Login - Bypass the challenge authentication system, and simply return either a 409 or a token for the account
@@ -82,14 +114,13 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Parse the user's device info and create a new session
 	user.parseDeviceInfo(r)
-	tokens, err := user.newSession()
+	session, err := user.newSession()
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
 	}
 
-	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", tokens.Token, twoWeeks))
+	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", session.Token, twoWeeks))
 	// Don't write the HttpOnly token to the JSON response, this token must be kept from javascript access
-	json.NewEncoder(w).Encode(map[string]string{
-		"CSRFtoken": tokens.CSRFtoken})
+	json.NewEncoder(w).Encode(session)
 }

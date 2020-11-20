@@ -73,37 +73,35 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var challenge Challenge
-	// Create a unique ID
-	for {
-		challenge.ID = MakeID()
-		rows, err := DB.Query("SELECT 1 FROM Challenges WHERE ID = ?", challenge.ID)
-		defer rows.Close()
-		if !rows.Next() {
-			challenge.EncodedID = EncodeID(challenge.ID)
-			break
-		} else if err == nil {
-			challenge.ID++
-		} else {
-			HTTPInternalServerError(w, err)
-			return
-		}
-	}
-
-	// Generate 32 bytes of random data for the challenge
-	challenge.Data = make([]byte, 32)
-	rand.Read(challenge.Data)
-
 	// Select and parse user's authentication key and PBKDF2 salt
+	var challenge Challenge
 	var saltAndKey []byte
 	row := DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
 	err := row.Scan(&saltAndKey)
 	if err != nil {
 		HTTPInternalServerError(w, err)
 		return
+	} else if len(saltAndKey) < 32 {
+		HTTPError(w, Error{
+			Title:   "Resource Conflict",
+			Message: "The authentication key belonging to this user is currently in an unprocessable state (less than 16 bytes in length excluding salt). PATCH /authKey to fix this.",
+			Status:  409})
+		return
 	}
 	challenge.Salt = base64.StdEncoding.EncodeToString(saltAndKey[0:16])
 	authKey := saltAndKey[16:]
+
+	// Create a unique ID
+	challenge.ID, err = MakeUniqueID("Challenges")
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+	challenge.EncodedID = EncodeID(challenge.ID)
+
+	// Generate 32 bytes of random data for the challenge
+	challenge.Data = make([]byte, 32)
+	rand.Read(challenge.Data)
 
 	// Create a block cipher from the authkey, then encrypt the challenge's data
 	block, err := aes.NewCipher(authKey)

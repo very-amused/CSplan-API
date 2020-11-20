@@ -28,8 +28,8 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	// Handle authentication
 	switch route.AuthLevel {
 	case 1:
-		id, err := Authenticate(w, r)
-		if err != nil {
+		id, authenticated := Authenticate(w, r)
+		if !authenticated {
 			return
 		}
 		// Add the user id to the route context

@@ -13,5 +13,5 @@ CSplan - go backend
 - [x] Auth bypass CLI flag (with warning)
 - [x] Add privacy settings (ip logging, reminders)
 - [x] Add session management
-- [ ] Optimize storage efficiency of tokens
+- [x] Optimize storage efficiency of tokens
 - [ ] Patch structs should use pointers so empty strings, etc aren't omitted
