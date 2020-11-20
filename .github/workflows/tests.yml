@@ -26,4 +26,4 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Database
-        run: mysql -u admin -h mariadb -p${MARIADB_PASSWORD} < sql/schema.sql
+        run: mysql -h 127.0.0.1 -P 3306 -u admin -p${MARIADB_PASSWORD} < sql/schema.sql
