@@ -18,12 +18,14 @@ jobs:
       mariadb:
         image: mariadb
         ports:
-          - 3306:3306
+          - 3306
         env:
           MYSQL_DATABASE: CSplanGo
           MYSQL_USER: admin
           MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
+      - name: Install MariaDB Client
+        run: sudo apt install -y mariadb-client
       - name: Install Database
-        run: mysql --protocol tcp -u admin -p${MARIADB_PASSWORD} < sql/schema.sql
+        run: mariadb -h 127.0.0.1 -P ${{ job.services.mariadb.ports['3306'] }} -uadmin -p${MARIADB_PASSWORD} < sql/schema.sql
