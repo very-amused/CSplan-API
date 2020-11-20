@@ -1,29 +1,29 @@
 name: Tests
 
 on:
-	push:
-		branches:
-			- master
-	pull_request:
-		branches:
-			- master
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 env:
-	MARIADB_PASSWORD: password
+  MARIADB_PASSWORD: password
 
 jobs:
-	tests:
-		runs-on: ubuntu-latest
-		services:
-			mariadb:
-				image: mariadb
-				ports:
-					- 3306:3306
-				env:
-					MYSQL_DATABASE: CSplanGo
-					MYSQL_USER: admin
-					MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
-		steps:
-			- uses: actions/checkout@v2
-			- name: Install Database
-				run: docker exec -i mariadb sh -c "exec mariadb -uadmin -p${MARIADB_PASSWORD}" < sql/schema.sql
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_DATABASE: CSplanGo
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Database
+        run: docker exec -i mariadb sh -c "exec mariadb -uadmin -p${MARIADB_PASSWORD}" < sql/schema.sql
