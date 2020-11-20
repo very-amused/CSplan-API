@@ -25,7 +25,5 @@ jobs:
           MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
-      - name: Install MariaDB Client
-        run: sudo apt install -y mariadb-client
       - name: Install Database
-        run: mariadb -h 127.0.0.1 -P ${{ job.services.mariadb.ports['3306'] }} -uadmin -p${MARIADB_PASSWORD} < sql/schema.sql
+        run: mysql -h 127.0.0.1 -P ${{ job.services.mariadb.ports['3306'] }} -uadmin -p${MARIADB_PASSWORD} < sql/schema.sql
