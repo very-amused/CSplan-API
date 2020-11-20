@@ -23,7 +23,7 @@ jobs:
           MYSQL_PASSWORD: ${{ env.MARIADB_PASSWORD }}
         ports:
           - 3306
-        options: --health-cmd="mysqladmin -h 127.0.0.1 -P ${{ job.services.mariadb.ports[3306] }} ping" --health-interval=10s --health-timeout=5s --health-retries=10
+        options: --health-cmd="mysqladmin -h 127.0.0.1 -P 3306 ping" --health-interval=10s --health-timeout=5s --health-retries=10
     steps:
       - uses: actions/checkout@v2
       - name: Install Database
