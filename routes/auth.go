@@ -122,5 +122,10 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", session.Token, twoWeeks))
 	// Don't write the HttpOnly token to the JSON response, this token must be kept from javascript access
-	json.NewEncoder(w).Encode(session)
+	json.NewEncoder(w).Encode(LoginState{
+		Session: session,
+		User: UserState{
+			EncodedID: EncodeID(user.ID),
+			Verified:  user.Verified},
+	})
 }

@@ -23,7 +23,7 @@ type User struct {
 
 // UserState - State information for a user
 type UserState struct {
-	EncodedID string `json:"userID"`
+	EncodedID string `json:"id"`
 	Verified  bool   `json:"verified"`
 }
 
@@ -39,8 +39,8 @@ type Session struct {
 
 // LoginState - State information for a user as a response to a login request
 type LoginState struct {
-	Session
-	UserState
+	Session Session   `json:"session"`
+	User    UserState `json:"user"`
 }
 
 // DeleteToken - Response to a request for account deletion
@@ -70,32 +70,32 @@ type uaOS useragentMatch
 
 // The order of these is VERY SPECIFIC... Opera user agents will match for Opera, Chrome and Safari, Chrome user agents will match for both Chrome and Safari, so these regexes must be checked in the order presented to not incorrectly identify Opera and Chrome as Safari, or Opera as Chrome
 var browsers = []uaBrowser{
-	uaBrowser{
+	{
 		name:  "Firefox",
 		regex: regexp.MustCompile("Firefox")},
-	uaBrowser{
+	{
 		name:  "Opera",
 		regex: regexp.MustCompile("OPR")},
-	uaBrowser{
+	{
 		name:  "Chrome/Chromium",
 		regex: regexp.MustCompile("Chrome")},
-	uaBrowser{
+	{
 		name:  "Safari",
 		regex: regexp.MustCompile("Safari")}}
 var operatingSystems = []uaOS{
-	uaOS{
+	{
 		name:  "iPhone",
 		regex: regexp.MustCompile("iPhone")}, // iPhones MUST be tried to match before MacOS, due to the fact that their user agents often contain "like Mac OS X"
-	uaOS{
+	{
 		name:  "Android",
 		regex: regexp.MustCompile("Android")},
-	uaOS{
+	{
 		name:  "Windows",
 		regex: regexp.MustCompile("Windows|NT")},
-	uaOS{
+	{
 		name:  "MacOS",
 		regex: regexp.MustCompile("Macintosh|Mac|OS X")},
-	uaOS{
+	{
 		name:  "Linux",
 		regex: regexp.MustCompile("Linux")}}
 

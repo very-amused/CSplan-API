@@ -56,7 +56,7 @@ var (
 	list = routes.TodoList{
 		Title: encode("Sample Todo List"),
 		Items: []routes.TodoItem{
-			routes.TodoItem{
+			{
 				Title:       encode("Item 1"),
 				Description: encode("Sample Description"),
 				Done:        encode("false"),
@@ -78,13 +78,13 @@ var (
 
 	nolist = routes.NoList{
 		Items: []routes.TodoItem{
-			routes.TodoItem{
+			{
 				Title:       encode("Nolist item"),
 				Description: encode("Sample Description")}},
 		Meta: routes.Meta{
 			CryptoKey: encode("EncryptedKey")}}
 	nolistItemPatch = []routes.TodoItem{
-		routes.TodoItem{
+		{
 			Title:       encode("New Item"),
 			Description: encode("This one is new")}}
 	nolistMetaPatch = routes.MetaPatch{

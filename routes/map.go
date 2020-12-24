@@ -45,7 +45,11 @@ func init() {
 	Map["GET:/whoami"] = &Route{
 		handler:   WhoAmI,
 		AuthLevel: 1}
-	Map["DELETE:/account/delete"] = &Route{
+	/* Two separate HTTP requests (second one must contain a token sent in the first)
+	to this fairly difficult to hit by accident URL are needed to actually delete a user account,
+	making it essentially impossible to accomplish by accident
+	*/
+	Map["DELETE:/delete_my_account_please"] = &Route{
 		handler:   DeleteAccount,
 		AuthLevel: 1}
 

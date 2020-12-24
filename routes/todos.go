@@ -44,7 +44,7 @@ type TodoItem struct {
 	Title       string   `json:"title" validate:"required,base64"`
 	Description string   `json:"description" validate:"required,base64"`
 	Done        string   `json:"done"` // This is in reality a boolean, but it is an encrypted one, so we store it as a string
-	Tags        []string `json:"tags" validate:"dive,base64"`
+	Tags        []string `json:"tags" validate:"required,dive,base64"`
 }
 
 // IndexedMeta - Full meta for all encrypted fields with order
@@ -182,11 +182,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// json unmarshal list items
-		err = json.Unmarshal([]byte(encoded), &list.Items)
-		if err != nil {
-			HTTPInternalServerError(w, err)
-			return
-		}
+		json.Unmarshal([]byte(encoded), &list.Items)
 
 		list.EncodedID = EncodeID(list.ID)
 		i := list.Meta.Index
