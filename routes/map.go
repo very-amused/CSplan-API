@@ -63,6 +63,15 @@ func init() {
 		handler:   Login,
 		AuthLevel: 0}
 
+	// Session management
+	Map["POST:/logout"] = &Route{
+		handler:   Logout,
+		AuthLevel: 1}
+	Map["POST:/logout/{id}"] = Map["POST:/logout"]
+	Map["GET:/sessions"] = &Route{
+		handler:   GetSessions,
+		AuthLevel: 1}
+
 	Map["PATCH:/authkey"] = &Route{
 		handler:   UpdateAuthKey,
 		AuthLevel: 1}

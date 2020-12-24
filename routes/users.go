@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 // User - Authentication and identification info for a user
@@ -35,6 +37,13 @@ type Session struct {
 	Token        string `json:"-"`
 	RawCSRFtoken []byte `json:"-"`
 	CSRFtoken    string
+}
+
+// SessionInfo - Information identifying a session without giving away any authentication details
+type SessionInfo struct {
+	ID         uint   `json:"-"`
+	EncodedID  string `json:"id"`
+	DeviceInfo string `json:"deviceInfo"`
 }
 
 // LoginState - State information for a user as a response to a login request
@@ -243,6 +252,59 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(UserState{
 		EncodedID: user.EncodedID,
 		Verified:  false})
+}
+
+// Logout - Log out from either a session specified by parameter, or the currently active session
+func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	userID := ctx.Value(key("user")).(uint)
+	idParam := mux.Vars(r)["id"]
+
+	// If no session ID is provided, assume logging out from current session
+	var err error
+	if len(idParam) == 0 {
+		// It is safe to assume that there will be no errors in decoding the authorization token, as these would've been caught earlier in the authorization process
+		authCookie, _ := r.Cookie("Authorization")
+		encodedToken := strings.Split(authCookie.Value, ":")[0]
+		token, _ := base64.RawURLEncoding.DecodeString(encodedToken)
+		_, err = DB.Exec("DELETE FROM Sessions WHERE Token = ? AND UserID = ?", token, userID)
+	} else {
+		sessionID, err := DecodeID(idParam)
+		if err != nil {
+			HTTPError(w, Error{
+				Title:   "Bad Request",
+				Message: "Malformed id param",
+				Status:  400})
+			return
+		}
+		_, err = DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
+	}
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	w.WriteHeader(204)
+}
+
+// GetSessions - Get a list of active sessions
+func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	userID := ctx.Value(key("user")).(uint)
+
+	rows, err := DB.Query("SELECT ID, DeviceInfo FROM Sessions WHERE UserID = ?", userID)
+	defer rows.Close()
+	if err != nil {
+		HTTPInternalServerError(w, err)
+		return
+	}
+
+	var sessions []SessionInfo
+	for rows.Next() {
+		var session SessionInfo
+		rows.Scan(&session.ID, &session.DeviceInfo)
+		session.EncodedID = EncodeID(session.ID)
+		sessions = append(sessions, session)
+	}
+	json.NewEncoder(w).Encode(sessions)
 }
 
 // DeleteAccount - Delete a user's account

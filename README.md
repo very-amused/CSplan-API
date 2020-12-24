@@ -15,3 +15,4 @@ CSplan - go backend
 - [x] Add session management
 - [x] Optimize storage efficiency of tokens
 - [ ] Patch structs should use pointers so empty strings, etc aren't omitted
+- [ ] Index auth tokens
