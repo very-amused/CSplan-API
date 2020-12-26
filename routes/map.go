@@ -28,12 +28,13 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	// Handle authentication
 	switch route.AuthLevel {
 	case 1:
-		id, authenticated := Authenticate(w, r)
+		userID, sessionID, authenticated := Authenticate(w, r)
 		if !authenticated {
 			return
 		}
-		// Add the user id to the route context
-		ctx = context.WithValue(ctx, key("user"), id)
+		// Add the user and session id to the route context
+		ctx = context.WithValue(ctx, key("user"), userID)
+		ctx = context.WithValue(ctx, key("session"), sessionID)
 	}
 	route.handler(ctx, w, r)
 }

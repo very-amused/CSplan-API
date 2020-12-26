@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -44,6 +45,9 @@ type SessionInfo struct {
 	ID         uint   `json:"-"`
 	EncodedID  string `json:"id"`
 	DeviceInfo string `json:"deviceInfo"`
+	Created    uint   `json:"created"`
+	LastUsed   uint   `json:"lastUsed"`
+	Expired    bool   `json:"expired"`
 }
 
 // LoginState - State information for a user as a response to a login request
@@ -180,7 +184,8 @@ func (user *User) newSession() (session Session, e error) {
 	rand.Read(session.RawToken)
 	rand.Read(session.RawCSRFtoken)
 
-	session.Token = base64.RawURLEncoding.EncodeToString(session.RawToken) + ":" + EncodeID(user.ID)
+	// Tokens are formatted as data:userID:sessionID, ensuring the user is always identifying themselves (by ID), as well as their session
+	session.Token = base64.RawURLEncoding.EncodeToString(session.RawToken) + ":" + EncodeID(user.ID) + ":" + EncodeID(session.ID)
 	session.CSRFtoken = base64.RawURLEncoding.EncodeToString(session.RawCSRFtoken)
 	// Insert the encoded tokens into the db
 	_, e = DB.Exec("INSERT INTO Sessions (ID, UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?, ?)", session.ID, user.ID, session.RawToken, session.RawCSRFtoken, user.DeviceInfo)
@@ -257,16 +262,13 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 // Logout - Log out from either a session specified by parameter, or the currently active session
 func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	userID := ctx.Value(key("user")).(uint)
+	sessionID := ctx.Value(key("session")).(uint)
 	idParam := mux.Vars(r)["id"]
 
 	// If no session ID is provided, assume logging out from current session
 	var err error
 	if len(idParam) == 0 {
-		// It is safe to assume that there will be no errors in decoding the authorization token, as these would've been caught earlier in the authorization process
-		authCookie, _ := r.Cookie("Authorization")
-		encodedToken := strings.Split(authCookie.Value, ":")[0]
-		token, _ := base64.RawURLEncoding.DecodeString(encodedToken)
-		_, err = DB.Exec("DELETE FROM Sessions WHERE Token = ? AND UserID = ?", token, userID)
+		DB.Exec("DELETE FROM Sessions WHERE ID = ?", sessionID)
 	} else {
 		sessionID, err := DecodeID(idParam)
 		if err != nil {
@@ -276,7 +278,7 @@ func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 				Status:  400})
 			return
 		}
-		_, err = DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
+		DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
 	}
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -290,7 +292,7 @@ func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	userID := ctx.Value(key("user")).(uint)
 
-	rows, err := DB.Query("SELECT ID, DeviceInfo FROM Sessions WHERE UserID = ?", userID)
+	rows, err := DB.Query("SELECT ID, DeviceInfo, Created, LastUsed FROM Sessions WHERE UserID = ?", userID)
 	defer rows.Close()
 	if err != nil {
 		HTTPInternalServerError(w, err)
@@ -300,8 +302,13 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var sessions []SessionInfo
 	for rows.Next() {
 		var session SessionInfo
-		rows.Scan(&session.ID, &session.DeviceInfo)
+		rows.Scan(&session.ID, &session.DeviceInfo, &session.Created, &session.LastUsed)
 		session.EncodedID = EncodeID(session.ID)
+		// This flag is to inform clients to log the user out as soon as possible, so that the session can be automatically cleared
+		// (or clear it manually using an API call)
+		if uint(time.Now().Unix())-session.Created >= twoWeeks {
+			session.Expired = true
+		}
 		sessions = append(sessions, session)
 	}
 	json.NewEncoder(w).Encode(sessions)

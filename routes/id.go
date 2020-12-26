@@ -36,6 +36,7 @@ func MakeUniqueID(tableName string) (id uint, e error) {
 	id = MakeID()
 	for {
 		rows, e := DB.Query(fmt.Sprintf("SELECT 1 FROM %s WHERE ID = ?", tableName), id)
+		defer rows.Close()
 		if !rows.Next() {
 			return id, nil
 		} else if e != nil {
