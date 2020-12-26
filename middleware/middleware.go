@@ -32,7 +32,7 @@ func SetConnection(next http.Handler) http.Handler {
 	})
 }
 
-var allowedOrigins = [2]string{"https://localhost:3030", "https://csplan.co"}
+var allowedOrigins = [2]string{"https://csplan.co", "https://localhost:3030"}
 
 // CORS - Handle cross-origin resource access
 func CORS(next http.Handler) http.Handler {

@@ -37,17 +37,6 @@ type Session struct {
 	CSRFtoken    string
 }
 
-// SessionInfo - Information identifying a session without giving away any authentication details
-type SessionInfo struct {
-	ID         uint   `json:"-"`
-	EncodedID  string `json:"id"`
-	DeviceInfo string `json:"deviceInfo"`
-	Created    uint   `json:"created"`
-	LastUsed   uint   `json:"lastUsed"`
-	Expired    bool   `json:"expired"`
-	AuthLevel  int    `json:"authLevel"`
-}
-
 // LoginState - State information for a user as a response to a login request
 type LoginState struct {
 	Session Session   `json:"session"`

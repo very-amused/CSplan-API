@@ -4,14 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
+// SessionInfo - Information identifying a session without giving away any authentication details
+type SessionInfo struct {
+	ID         uint   `json:"-"`
+	EncodedID  string `json:"id"`
+	DeviceInfo string `json:"deviceInfo"`
+	Created    uint   `json:"created"`
+	LastUsed   uint   `json:"lastUsed"`
+	Expired    bool   `json:"expired"`
+	AuthLevel  int    `json:"authLevel"`
+}
+
 // GetSessions - Get a list of active sessions
 func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	userID := ctx.Value(key("user")).(uint)
+	sessionID := ctx.Value(key("session")).(uint)
 
 	rows, err := DB.Query("SELECT ID, DeviceInfo, Created, LastUsed FROM Sessions WHERE UserID = ?", userID)
 	defer rows.Close()
@@ -21,6 +34,7 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var sessions []SessionInfo
+	i := 0
 	for rows.Next() {
 		session := SessionInfo{
 			AuthLevel: 1}
@@ -32,6 +46,13 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			session.Expired = true
 		}
 		sessions = append(sessions, session)
+		// Send an X-Current-Session header indicating the position (starting at 0) of the current session in the response body
+		// This is a simpler and more efficient solution than either forcing clients to store session IDs and keep track of this on their own
+		// or tagging each session with a bool (that will have the same value for all but one of them)
+		if session.ID == sessionID {
+			w.Header().Set("X-Current-Session", strconv.Itoa(i))
+		}
+		i++
 	}
 	json.NewEncoder(w).Encode(sessions)
 }
