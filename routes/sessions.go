@@ -22,7 +22,8 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	var sessions []SessionInfo
 	for rows.Next() {
-		var session SessionInfo
+		session := SessionInfo{
+			AuthLevel: 1}
 		rows.Scan(&session.ID, &session.DeviceInfo, &session.Created, &session.LastUsed)
 		session.EncodedID = EncodeID(session.ID)
 		// This flag is to inform clients to log the user out as soon as possible, so that the session can be automatically cleared

@@ -45,6 +45,7 @@ type SessionInfo struct {
 	Created    uint   `json:"created"`
 	LastUsed   uint   `json:"lastUsed"`
 	Expired    bool   `json:"expired"`
+	AuthLevel  int    `json:"authLevel"`
 }
 
 // LoginState - State information for a user as a response to a login request

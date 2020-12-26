@@ -28,7 +28,12 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	// Handle authentication
 	if route.AuthLevel > 0 {
 		auth := Authenticate(w, r)
-		if auth.AuthLevel < route.AuthLevel {
+		// Send relevant 401/403 response if the user isn't properly authenticated for the route
+		if auth.AuthLevel == -1 {
+			HTTPError(w, httpUnauthorized)
+			return
+		} else if auth.AuthLevel < route.AuthLevel {
+			HTTPError(w, httpForbidden)
 			return
 		}
 		// Add the user and session id to the route context
@@ -67,7 +72,9 @@ func init() {
 	Map["POST:/logout"] = &Route{
 		handler:   Logout,
 		AuthLevel: 1}
-	Map["POST:/logout/{id}"] = Map["POST:/logout"]
+	Map["POST:/logout/{id}"] = &Route{
+		handler:   Logout,
+		AuthLevel: 2}
 	Map["GET:/sessions"] = &Route{
 		handler:   GetSessions,
 		AuthLevel: 1}

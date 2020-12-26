@@ -38,26 +38,29 @@ func compareTokens(provided, correct []byte) (equal bool) {
 
 var twoWeeks uint = 60 * 60 * 24 * 14
 
-var authError = Error{
+var httpUnauthorized = Error{
 	Title:   "Unauthorized",
 	Message: "Missing or invalid authorization token(s)",
 	Status:  401}
+var httpForbidden = Error{
+	Title:   "Forbidden",
+	Message: "Insufficient authentication level for the requested route",
+	Status:  403}
 var unauthorized = AuthInfo{
 	AuthLevel: -1}
 
 // Authenticate - Authorize and identify a user for a authenticate route.
+// Second return value indicates whether the server is finished sending a response to the client
 func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	var userSession Session
 	tokenCookie, err := r.Cookie("Authorization")
 	if err != nil {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 	userSession.Token = tokenCookie.Value
 
 	userSession.CSRFtoken = r.Header.Get("CSRF-Token")
 	if len(userSession.CSRFtoken) == 0 && !AuthBypass {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 
@@ -65,35 +68,26 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	tokenParts := strings.Split(userSession.Token, ":")
 	// Make sure there are exactly two segments to the tokens, both to avoid out of range errors and as a proactive guard against malformed tokens
 	if len(tokenParts) != 3 {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 	userID, err := DecodeID(tokenParts[1])
 	if err != nil {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 	sessionID, err := DecodeID(tokenParts[2])
 	if err != nil {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 	userSession.RawToken, err = base64.RawURLEncoding.DecodeString(tokenParts[0])
 	if err != nil {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 	userSession.RawCSRFtoken, err = base64.RawURLEncoding.DecodeString(userSession.CSRFtoken)
 	if err != nil {
-		HTTPError(w, authError)
 		return unauthorized
 	}
 
 	row := DB.QueryRow("SELECT Token, CSRFtoken FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return unauthorized
-	}
 
 	var session Session
 	row.Scan(&session.RawToken, &session.RawCSRFtoken)
@@ -109,7 +103,6 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	}
 
 	// If the token didn't match, the user is not authenticated
-	HTTPError(w, authError)
 	return unauthorized
 }
 

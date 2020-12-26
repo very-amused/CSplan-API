@@ -25,7 +25,7 @@ func loadRoutes(r *mux.Router) {
 		method := slice[0]
 		path := slice[1]
 
-		if route.AuthLevel < 0 || route.AuthLevel > 1 {
+		if route.AuthLevel < 0 || route.AuthLevel > 2 {
 			log.Fatalf(`Invalid authentication level for route %s
 			This can be fixed in routes/map.go`, key)
 		}
@@ -70,7 +70,6 @@ func main() {
 		WriteTimeout: time.Second * 10,
 		Handler:      r}
 
-	log.Println("Starting up CSplan API 🚀")
-	// TLS is a requirement for HTTP2 compliance
+	log.Println("Starting up CSplan API")
 	log.Fatal(srv.ListenAndServe())
 }
