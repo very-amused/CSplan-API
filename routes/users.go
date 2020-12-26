@@ -9,9 +9,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
-
-	"github.com/gorilla/mux"
 )
 
 // User - Authentication and identification info for a user
@@ -114,9 +111,9 @@ var operatingSystems = []uaOS{
 
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
-	exists := 0
-	DB.Get(&exists, "SELECT 1 FROM Users WHERE Email = ?", user.Email)
-	return exists == 1
+	rows, err := DB.Query("SELECT 1 FROM Users WHERE Email = ?", user.Email)
+	defer rows.Close()
+	return err == nil && rows.Next()
 }
 
 // parse the user's device info in the form of ip,browser,os
@@ -257,61 +254,6 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(UserState{
 		EncodedID: user.EncodedID,
 		Verified:  false})
-}
-
-// Logout - Log out from either a session specified by parameter, or the currently active session
-func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	userID := ctx.Value(key("user")).(uint)
-	sessionID := ctx.Value(key("session")).(uint)
-	idParam := mux.Vars(r)["id"]
-
-	// If no session ID is provided, assume logging out from current session
-	var err error
-	if len(idParam) == 0 {
-		DB.Exec("DELETE FROM Sessions WHERE ID = ?", sessionID)
-	} else {
-		sessionID, err := DecodeID(idParam)
-		if err != nil {
-			HTTPError(w, Error{
-				Title:   "Bad Request",
-				Message: "Malformed id param",
-				Status:  400})
-			return
-		}
-		DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
-	}
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-
-	w.WriteHeader(204)
-}
-
-// GetSessions - Get a list of active sessions
-func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	userID := ctx.Value(key("user")).(uint)
-
-	rows, err := DB.Query("SELECT ID, DeviceInfo, Created, LastUsed FROM Sessions WHERE UserID = ?", userID)
-	defer rows.Close()
-	if err != nil {
-		HTTPInternalServerError(w, err)
-		return
-	}
-
-	var sessions []SessionInfo
-	for rows.Next() {
-		var session SessionInfo
-		rows.Scan(&session.ID, &session.DeviceInfo, &session.Created, &session.LastUsed)
-		session.EncodedID = EncodeID(session.ID)
-		// This flag is to inform clients to log the user out as soon as possible, so that the session can be automatically cleared
-		// (or clear it manually using an API call)
-		if uint(time.Now().Unix())-session.Created >= twoWeeks {
-			session.Expired = true
-		}
-		sessions = append(sessions, session)
-	}
-	json.NewEncoder(w).Encode(sessions)
 }
 
 // DeleteAccount - Delete a user's account

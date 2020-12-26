@@ -26,15 +26,14 @@ type key string
 func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Handle authentication
-	switch route.AuthLevel {
-	case 1:
-		userID, sessionID, authenticated := Authenticate(w, r)
-		if !authenticated {
+	if route.AuthLevel > 0 {
+		auth := Authenticate(w, r)
+		if auth.AuthLevel < route.AuthLevel {
 			return
 		}
 		// Add the user and session id to the route context
-		ctx = context.WithValue(ctx, key("user"), userID)
-		ctx = context.WithValue(ctx, key("session"), sessionID)
+		ctx = context.WithValue(ctx, key("user"), auth.UserID)
+		ctx = context.WithValue(ctx, key("session"), auth.SessionID)
 	}
 	route.handler(ctx, w, r)
 }

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 	Email varchar(255) NOT NULL,
 	Verified boolean NOT NULL DEFAULT 0,
 	PRIMARY KEY (ID),
-	UNIQUE (Email)
+	UNIQUE KEY (Email)
 );
 
 CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (

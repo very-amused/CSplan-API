@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+/* Authentication levels for this API serve as follows:
+Level -1: Tried to access a route requiring greater authorization than provided, return 401
+Level 0: Authorized to participate in the process of upgrading auth to a higher level
+Level 1: Authorized to perform actions concerning the current session, view and modify resources (obtained through solving challenges such as TOTP and AES decryption)
+Level 2: Authorized to perform actions regarding other sessions, such as remote logout and lockdown (obtained through reverifying their current session by TOTP or email)
+*/
+
+// AuthInfo - Information authorizing a user to perform certain actions with the API
+type AuthInfo struct {
+	UserID    uint
+	SessionID uint
+	AuthLevel int
+}
+
 func compareTokens(provided, correct []byte) (equal bool) {
 	if len(provided) != len(correct) {
 		return false
@@ -28,21 +42,23 @@ var authError = Error{
 	Title:   "Unauthorized",
 	Message: "Missing or invalid authorization token(s)",
 	Status:  401}
+var unauthorized = AuthInfo{
+	AuthLevel: -1}
 
 // Authenticate - Authorize and identify a user for a authenticate route.
-func Authenticate(w http.ResponseWriter, r *http.Request) (userID uint, sessionID uint, success bool) {
+func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	var userSession Session
 	tokenCookie, err := r.Cookie("Authorization")
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
 	userSession.Token = tokenCookie.Value
 
 	userSession.CSRFtoken = r.Header.Get("CSRF-Token")
 	if len(userSession.CSRFtoken) == 0 && !AuthBypass {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
 
 	// Parse and decode both auth and CSRF tokens
@@ -50,33 +66,33 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (userID uint, sessionI
 	// Make sure there are exactly two segments to the tokens, both to avoid out of range errors and as a proactive guard against malformed tokens
 	if len(tokenParts) != 3 {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
-	userID, err = DecodeID(tokenParts[1])
+	userID, err := DecodeID(tokenParts[1])
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
-	sessionID, err = DecodeID(tokenParts[2])
+	sessionID, err := DecodeID(tokenParts[2])
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
 	userSession.RawToken, err = base64.RawURLEncoding.DecodeString(tokenParts[0])
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
 	userSession.RawCSRFtoken, err = base64.RawURLEncoding.DecodeString(userSession.CSRFtoken)
 	if err != nil {
 		HTTPError(w, authError)
-		return 0, 0, false
+		return unauthorized
 	}
 
 	row := DB.QueryRow("SELECT Token, CSRFtoken FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
 	if err != nil {
 		HTTPInternalServerError(w, err)
-		return 0, 0, false
+		return unauthorized
 	}
 
 	var session Session
@@ -86,12 +102,15 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (userID uint, sessionI
 		(compareTokens(userSession.RawCSRFtoken, session.RawCSRFtoken) || AuthBypass) { // Don't check CSRF tokens if auth bypass is enabled
 		// Update token to show most recent time of use (prevents deletion in the middle of a session)
 		go DB.Exec("UPDATE Sessions SET LastUsed = ? WHERE ID = ?", time.Now().Unix(), sessionID)
-		return uint(userID), uint(sessionID), true
+		return AuthInfo{
+			UserID:    userID,
+			SessionID: sessionID,
+			AuthLevel: 1}
 	}
 
 	// If the token didn't match, the user is not authenticated
 	HTTPError(w, authError)
-	return 0, 0, false
+	return unauthorized
 }
 
 // Login - Bypass the challenge authentication system, and simply return either a 409 or a token for the account
