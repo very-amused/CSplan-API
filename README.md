@@ -17,3 +17,5 @@ CSplan - go backend
 - [ ] Patch structs should use pointers so empty strings, etc aren't omitted
 ~~Index auth tokens~~
 - [x] Add session identification to auth tokens
+- [x] Refactor routes into subpackages, moving frequently reused code into a core package
+- [ ] Update both auth and crypto keys to store hash parameters
