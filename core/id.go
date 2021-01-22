@@ -1,4 +1,4 @@
-package routes
+package core
 
 import (
 	"crypto/rand"
@@ -36,8 +36,11 @@ func MakeUniqueID(tableName string) (id uint, e error) {
 	id = MakeID()
 	for {
 		rows, e := DB.Query(fmt.Sprintf("SELECT 1 FROM %s WHERE ID = ?", tableName), id)
+		if rows == nil {
+			panic(fmt.Sprintf("MakeUniqueID call returned nil rows, it is likely the table '%s' doesn't exist.", tableName))
+		}
 		defer rows.Close()
-		if !rows.Next() {
+		if rows == nil || !rows.Next() {
 			return id, nil
 		} else if e != nil {
 			return id, e

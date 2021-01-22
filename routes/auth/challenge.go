@@ -1,4 +1,4 @@
-package routes
+package auth
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	core "github.com/very-amused/CSplan-API/core"
 )
 
 // Challenge - Encryption challenge to obtain authentication
@@ -42,7 +43,7 @@ func (challenge *Challenge) encryptData(block cipher.Block) error {
 func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Enforce action verbage
 	if r.URL.Query().Get("action") != "request" {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Invalid Action Parameter",
 			Message: "To enforce semantics, all new challenge requests must contain '?action=request'.",
 			Status:  422})
@@ -53,20 +54,20 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	json.NewDecoder(r.Body).Decode(&user)
 
 	if !user.exists() {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Not Found",
 			Message: "The user associated with the requested challenge does not exist.",
 			Status:  404})
 		return
 	}
 	// Get the user's ID
-	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+	core.DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
 	// If there are 5 or more pending challenges for the user, decline providing a new one
 	var count int
-	DB.Get(&count, "SELECT COUNT(ID) FROM Challenges WHERE ID = ? AND Failed = 0")
+	core.DB.Get(&count, "SELECT COUNT(ID) FROM Challenges WHERE ID = ? AND Failed = 0")
 	if count > 5 {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Too Many Requests",
 			Message: "There are too many pending challenges requested to provide a new one. You are being ratelimited.",
 			Status:  429})
@@ -76,13 +77,13 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	// Select and parse user's authentication key and PBKDF2 salt
 	var challenge Challenge
 	var saltAndKey []byte
-	row := DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
+	row := core.DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
 	err := row.Scan(&saltAndKey)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	} else if len(saltAndKey) < 32 {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Resource Conflict",
 			Message: "The authentication key belonging to this user is currently in an unprocessable state (less than 16 bytes in length excluding salt). PATCH /authKey to fix this.",
 			Status:  409})
@@ -92,12 +93,12 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	authKey := saltAndKey[16:]
 
 	// Create a unique ID
-	challenge.ID, err = MakeUniqueID("Challenges")
+	challenge.ID, err = core.MakeUniqueID("Challenges")
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
-	challenge.EncodedID = EncodeID(challenge.ID)
+	challenge.EncodedID = core.EncodeID(challenge.ID)
 
 	// Generate 32 bytes of random data for the challenge
 	challenge.Data = make([]byte, 32)
@@ -106,18 +107,18 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	// Create a block cipher from the authkey, then encrypt the challenge's data
 	block, err := aes.NewCipher(authKey)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 	if err := challenge.encryptData(block); err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
 	// Add the challenge to the database
-	_, err = DB.Exec("INSERT INTO Challenges (ID, UserID, _Data) VALUES (?, ?, ?)", challenge.ID, user.ID, challenge.Data)
+	_, err = core.DB.Exec("INSERT INTO Challenges (ID, UserID, _Data) VALUES (?, ?, ?)", challenge.ID, user.ID, challenge.Data)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -128,7 +129,7 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Enforce action verbage
 	if r.URL.Query().Get("action") != "submit" {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Invalid Action Parameter",
 			Message: "To enforce semantics, all challenge submissions must contain '?action=submit'.",
 			Status:  422})
@@ -138,14 +139,15 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	var challenge Challenge
 	var user User
 	json.NewDecoder(r.Body).Decode(&challenge)
-	if err := HTTPValidate(w, challenge); err != nil {
+	if err := core.ValidateStruct(challenge); err != nil {
+		core.WriteError(w, *err)
 		return
 	}
 
 	var err error
-	challenge.ID, err = DecodeID(mux.Vars(r)["id"])
+	challenge.ID, err = core.DecodeID(mux.Vars(r)["id"])
 	if err != nil {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Bad Request",
 			Message: "Missing or malformed ID provided.",
 			Status:  400})
@@ -154,16 +156,16 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	challenge.Data, err = base64.StdEncoding.DecodeString(challenge.EncodedData)
 
 	var correctData []byte
-	row := DB.QueryRow("SELECT _Data, UserID FROM Challenges WHERE ID = ? AND Failed = 0", challenge.ID)
+	row := core.DB.QueryRow("SELECT _Data, UserID FROM Challenges WHERE ID = ? AND Failed = 0", challenge.ID)
 	err = row.Scan(&correctData, &user.ID)
 	if err != nil {
-		HTTPNotFoundError(w)
+		core.WriteError404(w)
 		return
 	}
 
 	// Compare lengths first to avoid range errors
 	if len(challenge.Data) != len(correctData) {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Challenge Failed",
 			Message: "Incorrect data provided.",
 			Status:  401})
@@ -173,7 +175,7 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	// If the data isn't equal to the
 	for i := range correctData {
 		if correctData[i] != challenge.Data[i] {
-			HTTPError(w, Error{
+			core.WriteError(w, core.HTTPError{
 				Title:   "Challenge Failed",
 				Message: "Incorrect data provided.",
 				Status:  401})
@@ -184,14 +186,14 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	// At this point, the challenge is successful and the user is authorized
 	user.parseDeviceInfo(r)
 	// Create new tokens
-	DB.Exec("DELETE FROM Challenges WHERE ID = ?", challenge.ID)
+	core.DB.Exec("DELETE FROM Challenges WHERE ID = ?", challenge.ID)
 	tokens, err := user.newSession()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
-	user.EncodedID = EncodeID(user.ID)
+	user.EncodedID = core.EncodeID(user.ID)
 	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Path=/; HttpOnly; Max-Age=%d", tokens.Token, twoWeeks))
 	json.NewEncoder(w).Encode(map[string]string{
 		"id":        user.EncodedID,

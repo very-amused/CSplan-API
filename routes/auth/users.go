@@ -1,4 +1,4 @@
-package routes
+package auth
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	core "github.com/very-amused/CSplan-API/core"
 )
 
 // User - Authentication and identification info for a user
@@ -101,7 +103,7 @@ var operatingSystems = []uaOS{
 
 // user.exists - Return true if a user with the specified email already exists
 func (user *User) exists() bool {
-	rows, err := DB.Query("SELECT 1 FROM Users WHERE Email = ?", user.Email)
+	rows, err := core.DB.Query("SELECT 1 FROM Users WHERE Email = ?", user.Email)
 	defer rows.Close()
 	return err == nil && rows.Next()
 }
@@ -112,7 +114,7 @@ func (user *User) parseDeviceInfo(r *http.Request) {
 	// Check if user has consented to ip logging
 	var hasUserConsent bool
 	var ip string
-	DB.Get(&hasUserConsent, "SELECT EnableIPLogging FROM Settings WHERE UserID = ?", user.ID)
+	core.DB.Get(&hasUserConsent, "SELECT EnableIPLogging FROM Settings WHERE UserID = ?", user.ID)
 	// Parse user ip address
 	if hasUserConsent {
 		// Check X-FORWARDED-FOR header, then fallback to raw address if that fails
@@ -158,13 +160,13 @@ func (user *User) parseDeviceInfo(r *http.Request) {
 
 func (user *User) newSession() (session Session, e error) {
 	// Get the user's ID from the db for identification purposes
-	DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+	core.DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 	// Generate a session ID
-	session.ID, e = MakeUniqueID("Sessions")
+	session.ID, e = core.MakeUniqueID("Sessions")
 	if e != nil {
 		return session, e
 	}
-	session.EncodedID = EncodeID(session.ID)
+	session.EncodedID = core.EncodeID(session.ID)
 
 	session.RawToken = make([]byte, 32)
 	session.RawCSRFtoken = make([]byte, 32)
@@ -172,10 +174,10 @@ func (user *User) newSession() (session Session, e error) {
 	rand.Read(session.RawCSRFtoken)
 
 	// Tokens are formatted as data:userID:sessionID, ensuring the user is always identifying themselves (by ID), as well as their session
-	session.Token = base64.RawURLEncoding.EncodeToString(session.RawToken) + ":" + EncodeID(user.ID) + ":" + EncodeID(session.ID)
+	session.Token = base64.RawURLEncoding.EncodeToString(session.RawToken) + ":" + core.EncodeID(user.ID) + ":" + core.EncodeID(session.ID)
 	session.CSRFtoken = base64.RawURLEncoding.EncodeToString(session.RawCSRFtoken)
 	// Insert the encoded tokens into the db
-	_, e = DB.Exec("INSERT INTO Sessions (ID, UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?, ?)", session.ID, user.ID, session.RawToken, session.RawCSRFtoken, user.DeviceInfo)
+	_, e = core.DB.Exec("INSERT INTO Sessions (ID, UserID, Token, CSRFtoken, DeviceInfo) VALUES (?, ?, ?, ?, ?)", session.ID, user.ID, session.RawToken, session.RawCSRFtoken, user.DeviceInfo)
 	return session, e
 }
 
@@ -183,14 +185,15 @@ func (user *User) newSession() (session Session, e error) {
 func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
-	if err := HTTPValidate(w, user); err != nil {
+	if err := core.ValidateStruct(user); err != nil {
+		core.WriteError(w, *err)
 		return
 	}
 
 	// Check if the user already exists
 	if user.exists() {
-		HTTPError(w, Error{
-			Title:   "Conflict",
+		core.WriteError(w, core.HTTPError{
+			Title:   "Resource Conflict",
 			Message: "This user already exists",
 			Status:  409})
 		return
@@ -198,33 +201,33 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Generate the user's ID
 	for {
-		user.ID = MakeID()
-		rows, err := DB.Query("SELECT 1 FROM Users WHERE ID = ?", user.ID)
+		user.ID = core.MakeID()
+		rows, err := core.DB.Query("SELECT 1 FROM Users WHERE ID = ?", user.ID)
 		defer rows.Close()
 		if !rows.Next() {
 			break
 		} else {
 			if err != nil {
-				HTTPInternalServerError(w, err)
+				core.WriteError500(w, err)
 				return
 			}
 			user.ID++
 		}
 	}
-	user.EncodedID = EncodeID(user.ID)
+	user.EncodedID = core.EncodeID(user.ID)
 
 	// Insert the user into the database
-	tx, err := DB.Begin()
+	tx, err := core.DB.Begin()
 	defer tx.Rollback()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
 	// Add to the users table
 	_, err = tx.Exec("INSERT INTO Users (ID, Email, Verified) VALUES (?, ?, ?)", user.ID, user.Email, user.Verified)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -232,11 +235,11 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	_, err = tx.Exec("INSERT INTO AuthKeys (UserID, AuthKey) VALUES (?, FROM_BASE64(?))",
 		user.ID, user.AuthKey)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 	if err = tx.Commit(); err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -248,15 +251,15 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // DeleteAccount - Delete a user's account
 func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(uint)
+	user := ctx.Value(core.Key("user")).(uint)
 	confirm := r.Header.Get("X-Confirm")
 
 	if len(confirm) > 0 {
 		// Verify legitimacy of token
 		var token string
-		DB.Get(&token, "SELECT Token FROM DeleteTokens WHERE UserID = ?", user)
+		core.DB.Get(&token, "SELECT Token FROM DeleteTokens WHERE UserID = ?", user)
 		if confirm != token {
-			HTTPError(w, Error{
+			core.WriteError(w, core.HTTPError{
 				Title:   "Forbidden",
 				Message: "Invalid or malformed confirmation token",
 				Status:  403})
@@ -265,10 +268,10 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 
 		// Notify the user with a 500 response if any of the delete queries fail
 		// If this ever happens in production, something has gone horribly wrong
-		tx, err := DB.Begin()
+		tx, err := core.DB.Begin()
 		defer tx.Rollback()
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 		queries := []string{
@@ -283,9 +286,9 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			"DELETE FROM Settings WHERE UserID = ?",
 			"DELETE FROM Users WHERE ID = ?"}
 		for _, query := range queries {
-			_, err := DB.Exec(query, user)
+			_, err := core.DB.Exec(query, user)
 			if err != nil {
-				HTTPInternalServerError(w, err)
+				core.WriteError500(w, err)
 				return
 			}
 		}
@@ -296,9 +299,9 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	} else {
 		// If there isn't a confirmation header, prompt the user for confirmation
 		exists := 0
-		DB.Get(&exists, "SELECT 1 FROM DeleteTokens WHERE UserID = ?", user)
+		core.DB.Get(&exists, "SELECT 1 FROM DeleteTokens WHERE UserID = ?", user)
 		if exists == 1 {
-			HTTPError(w, Error{
+			core.WriteError(w, core.HTTPError{
 				Title:   "Resource Conflict",
 				Message: "This user already has a delete token stored. It will be automatically cleared in approximately 5min.",
 				Status:  409})
@@ -309,15 +312,15 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		bytes := make([]byte, 32)
 		_, err := rand.Read(bytes)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 
 		// Encode token to string
 		token := base64.RawURLEncoding.EncodeToString(bytes)
-		_, err = DB.Exec("INSERT INTO DeleteTokens (UserID, Token) VALUES (?, ?)", user, token)
+		_, err = core.DB.Exec("INSERT INTO DeleteTokens (UserID, Token) VALUES (?, ?)", user, token)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 

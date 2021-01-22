@@ -1,4 +1,4 @@
-package routes
+package todo
 
 import (
 	"context"
@@ -9,19 +9,20 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	core "github.com/very-amused/CSplan-API/core"
 )
 
-// TodoList - A titled list of TodoItems
-type TodoList struct {
-	ID        uint        `json:"-"`
-	EncodedID string      `json:"id"`
-	Title     string      `json:"title" validate:"required,base64,max=255"`
-	Items     []TodoItem  `json:"items" validate:"required,dive"`
-	Meta      IndexedMeta `json:"meta" validate:"required"`
+// List - A titled list of TodoItems
+type List struct {
+	ID        uint             `json:"-"`
+	EncodedID string           `json:"id"`
+	Title     string           `json:"title" validate:"required,base64,max=255"`
+	Items     []Item           `json:"items" validate:"required,dive"`
+	Meta      core.IndexedMeta `json:"meta" validate:"required"`
 }
 
 // SortableLists - A sortable array of todo lists
-type SortableLists []TodoList
+type SortableLists []List
 
 func (lists SortableLists) Len() int {
 	return len(lists)
@@ -39,37 +40,24 @@ func (lists SortableLists) Swap(i, j int) {
 	lists[i] = old2
 }
 
-// TodoItem - A singular todo item belonging to a parent TodoList
-type TodoItem struct {
+// Item - A singular todo item belonging to a parent List
+type Item struct {
 	Title       string   `json:"title" validate:"required,base64"`
 	Description string   `json:"description" validate:"required,base64"`
 	Done        string   `json:"done"` // This is in reality a boolean, but it is an encrypted one, so we store it as a string
 	Tags        []string `json:"tags" validate:"required,dive,base64"`
 }
 
-// IndexedMeta - Full meta for all encrypted fields with order
-type IndexedMeta struct {
-	CryptoKey string `json:"cryptoKey" validate:"required,base64,max=700"`
-	Checksum  string `json:"checksum"`
-	Index     uint   `json:"index" db:"_Index"`
+// Response - Response to creation or update of a todo list
+type Response struct {
+	EncodedID string            `json:"id"`
+	Meta      core.IndexedState `json:"meta"`
 }
 
-// IndexedState - Partial meta (checksum) for all encrypted fields of a resource with order
-type IndexedState struct {
-	Checksum string `json:"checksum"`
-	Index    uint   `json:"index" db:"_Index"`
-}
-
-// TodoResponse - Response to creation or update of a todo list
-type TodoResponse struct {
-	EncodedID string       `json:"id"`
-	Meta      IndexedState `json:"meta"`
-}
-
-// TodoPatch - Patch to update a todolist
-type TodoPatch struct {
+// Patch - Patch to update a todolist
+type Patch struct {
 	Title string           `json:"title" validate:"omitempty,base64,max=255"`
-	Items []TodoItem       `json:"items" validate:"dive"`
+	Items []Item           `json:"items" validate:"dive"`
 	Meta  IndexedMetaPatch `json:"meta"`
 }
 
@@ -87,28 +75,29 @@ func parseID(strID string) (uint, error) {
 
 // AddTodo - Add a todo list to the database
 func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	var list TodoList
-	var err error
+	var list List
 	json.NewDecoder(r.Body).Decode(&list)
-	if err = HTTPValidate(w, list); err != nil {
+	if err := core.ValidateStruct(list); err != nil {
+		core.WriteError(w, *err)
 		return
 	}
-	user := ctx.Value(key("user")).(uint)
+	user := ctx.Value(core.Key("user")).(uint)
 
 	// Generate a unique ID
-	list.ID, err = MakeUniqueID("TodoLists")
+	var err error
+	list.ID, err = core.MakeUniqueID("TodoLists")
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 	}
-	list.EncodedID = EncodeID(list.ID)
+	list.EncodedID = core.EncodeID(list.ID)
 
 	// Figure out list index
 	var max, index uint
-	err = DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	err = core.DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
 	if err != nil {
 		index = 0
 	} else if max == 255 {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title: "Resource Conflict",
 			Message: `The max index allowed for todo-lists (255) has been exceeded.
 			Remove one or more todo lists before attempting to add more`,
@@ -129,39 +118,39 @@ func AddTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	m, err := json.Marshal(list.Items)
 	encoded := string(m)
 
-	_, err = DB.Exec("INSERT INTO TodoLists (ID, UserID, Title, Items, _Index, CryptoKey) VALUES (?, ?, FROM_BASE64(?), ?, ?, FROM_BASE64(?))",
+	_, err = core.DB.Exec("INSERT INTO TodoLists (ID, UserID, Title, Items, _Index, CryptoKey) VALUES (?, ?, FROM_BASE64(?), ?, ?, FROM_BASE64(?))",
 		list.ID, user, list.Title, encoded, index, list.Meta.CryptoKey)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
 	// Get checksum
 	var Checksum string
-	err = DB.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ?", list.ID)
+	err = core.DB.Get(&Checksum, "SELECT SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ?", list.ID)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 	w.WriteHeader(201)
-	json.NewEncoder(w).Encode(TodoResponse{
-		EncodedID: EncodeID(list.ID),
-		Meta: IndexedState{
+	json.NewEncoder(w).Encode(Response{
+		EncodedID: core.EncodeID(list.ID),
+		Meta: core.IndexedState{
 			Index:    index,
 			Checksum: Checksum}})
 }
 
 // GetTodos - Retrieve a slice of all todo lists belonging to a user
 func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(uint)
+	user := ctx.Value(core.Key("user")).(uint)
 
 	var max int
-	DB.Get(&max, "SELECT Max(_Index) FROM TodoLists WHERE UserID = ?", user)
+	core.DB.Get(&max, "SELECT Max(_Index) FROM TodoLists WHERE UserID = ?", user)
 
-	rows, err := DB.Query("SELECT ID, TO_BASE64(Title), Items, _Index, TO_BASE64(CryptoKey), SHA(CONCAT(Title, Items)) FROM TodoLists WHERE UserID = ?", user)
+	rows, err := core.DB.Query("SELECT ID, TO_BASE64(Title), Items, _Index, TO_BASE64(CryptoKey), SHA(CONCAT(Title, Items)) FROM TodoLists WHERE UserID = ?", user)
 	defer rows.Close()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -171,31 +160,31 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// This allows for lists to effectively be sorted in such a way that they later can be copied to a single-depth slice for encoding, while also
 	// fixing index collisions/gaps in deferred SQL statements
 	// This solution is much faster than simply appending and then implementing a sort algorithm
-	var lists = make([]*[]TodoList, max+1)
+	var lists = make([]*[]List, max+1)
 
 	for rows.Next() {
-		var list TodoList
+		var list List
 		var encoded string
 		err = rows.Scan(&list.ID, &list.Title, &encoded, &list.Meta.Index, &list.Meta.CryptoKey, &list.Meta.Checksum)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 		// json unmarshal list items
 		json.Unmarshal([]byte(encoded), &list.Items)
 
-		list.EncodedID = EncodeID(list.ID)
+		list.EncodedID = core.EncodeID(list.ID)
 		i := list.Meta.Index
 		// Append the list to the subslice at index i
 		if lists[i] != nil {
 			*lists[i] = append(*lists[i], list)
 		} else {
-			lists[i] = &[]TodoList{list}
+			lists[i] = &[]List{list}
 		}
 	}
 
 	// Validate and fix index collisions
-	var final []TodoList
+	var final []List
 	var k int
 	for i := 0; i < len(lists); i++ {
 		if lists[i] == nil {
@@ -206,7 +195,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			final = append(final, (*lists[i])[j])
 			// Defer updating any inaccurate indexes in the db
 			if final[k].Meta.Index != uint(k) {
-				defer DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", k, final[k].ID)
+				defer core.DB.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", k, final[k].ID)
 			}
 			k++
 		}
@@ -214,7 +203,7 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		lists[i] = nil
 	}
 	if len(final) == 0 {
-		final = make([]TodoList, 0)
+		final = make([]List, 0)
 	}
 
 	json.NewEncoder(w).Encode(final)
@@ -222,13 +211,13 @@ func GetTodos(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // GetTodo - Retrieve a single todo list by id
 func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(uint)
-	var list TodoList
+	user := ctx.Value(core.Key("user")).(uint)
+	var list List
 
 	// Parse ID from url
-	id, err := DecodeID(mux.Vars(r)["id"])
+	id, err := core.DecodeID(mux.Vars(r)["id"])
 	if err != nil {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Bad Request",
 			Message: "Malformed id param",
 			Status:  400})
@@ -238,42 +227,42 @@ func GetTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Select the todo list from the db
 	var encoded string
-	rows, err := DB.Query("SELECT TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ? AND UserID = ?",
+	rows, err := core.DB.Query("SELECT TO_BASE64(Title) AS Title, Items, _Index, TO_BASE64(CryptoKey) AS CryptoKey, SHA(CONCAT(Title, Items)) AS Checksum FROM TodoLists WHERE ID = ? AND UserID = ?",
 		list.ID, user)
 	defer rows.Close()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 	// If rows.Next() returns false, it means no rows are found, which indicates a 404
 	if rows.Next() {
 		err = rows.Scan(&list.Title, &encoded, &list.Meta.Index, &list.Meta.CryptoKey, &list.Meta.Checksum)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 	} else {
-		HTTPNotFoundError(w)
+		core.WriteError404(w)
 		return
 	}
 
 	// json unmarshal list items
 	err = json.Unmarshal([]byte(encoded), &list.Items)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
-	list.EncodedID = EncodeID(list.ID)
+	list.EncodedID = core.EncodeID(list.ID)
 
 	json.NewEncoder(w).Encode(list)
 }
 
 // UpdateTodo - Update a todo list by id
 func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(uint)
-	id, err := DecodeID(mux.Vars(r)["id"])
+	user := ctx.Value(core.Key("user")).(uint)
+	id, err := core.DecodeID(mux.Vars(r)["id"])
 	if err != nil {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Bad Request",
 			Message: "Malformed ID param",
 			Status:  400})
@@ -281,17 +270,18 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate patch body
-	var patch TodoPatch
+	var patch Patch
 	json.NewDecoder(r.Body).Decode(&patch)
-	if err := HTTPValidate(w, patch); err != nil {
+	if err := core.ValidateStruct(patch); err != nil {
+		core.WriteError(w, *err)
 		return
 	}
 
 	// Existence + ownership check
-	rows, _ := DB.Query("SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	rows, _ := core.DB.Query("SELECT 1 FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 	defer rows.Close()
 	if !rows.Next() {
-		HTTPNotFoundError(w)
+		core.WriteError404(w)
 		return
 	}
 
@@ -305,7 +295,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if patch.Items != nil {
 		// Avoid being encoded as null
 		if len(patch.Items) == 0 {
-			patch.Items = make([]TodoItem, 0)
+			patch.Items = make([]Item, 0)
 		}
 		m, _ := json.Marshal(patch.Items)
 		encoded := string(m)
@@ -320,18 +310,18 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if len(updates) > 0 {
 		query := fmt.Sprintf("UPDATE TodoLists SET %s WHERE ID = ?", strings.Join(updates, ", "))
 		args = append(args, id)
-		_, err := DB.Exec(query, args...)
+		_, err := core.DB.Exec(query, args...)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 	}
 
 	// Get state information
-	var state IndexedState
-	err = DB.Get(&state, "SELECT SHA(CONCAT(Title, Items)) AS Checksum, _Index FROM TodoLists WHERE ID = ?", id)
+	var state core.IndexedState
+	err = core.DB.Get(&state, "SELECT SHA(CONCAT(Title, Items)) AS Checksum, _Index FROM TodoLists WHERE ID = ?", id)
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -340,19 +330,19 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	o := state.Index
 	if n != o {
 		// Initiate a transaction, so if any step fails, things are not left in a broken state
-		tx, err := DB.Beginx()
+		tx, err := core.DB.Beginx()
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 		defer tx.Rollback()
 
 		// Select a map of index -> id
 		ids := make(map[uint]uint)
-		rows, err := DB.Query("SELECT ID, _Index FROM TodoLists WHERE UserID = ?", user)
+		rows, err := core.DB.Query("SELECT ID, _Index FROM TodoLists WHERE UserID = ?", user)
 		defer rows.Close()
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 		for rows.Next() {
@@ -367,7 +357,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			for i := o + 1; i <= n; i++ {
 				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i-1, ids[i])
 				if err != nil {
-					HTTPInternalServerError(w, err)
+					core.WriteError500(w, err)
 					return
 				}
 			}
@@ -376,7 +366,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			for i := n; i < o; i++ {
 				_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", i+1, ids[i])
 				if err != nil {
-					HTTPInternalServerError(w, err)
+					core.WriteError500(w, err)
 					return
 				}
 			}
@@ -384,24 +374,24 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		// Update the index of the list itself
 		_, err = tx.Exec("UPDATE TodoLists SET _Index = ? WHERE ID = ?", n, id)
 		if err != nil {
-			HTTPInternalServerError(w, err)
+			core.WriteError500(w, err)
 			return
 		}
 		state.Index = n
 		tx.Commit()
 	}
 
-	json.NewEncoder(w).Encode(TodoResponse{
-		EncodedID: EncodeID(id),
+	json.NewEncoder(w).Encode(Response{
+		EncodedID: core.EncodeID(id),
 		Meta:      state})
 }
 
 // DeleteTodo - Delete a todo list by ID
 func DeleteTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(key("user")).(uint)
-	id, err := DecodeID(mux.Vars(r)["id"])
+	user := ctx.Value(core.Key("user")).(uint)
+	id, err := core.DecodeID(mux.Vars(r)["id"])
 	if err != nil {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Bad Request",
 			Message: "Malformed or missing ID param",
 			Status:  400})
@@ -410,14 +400,14 @@ func DeleteTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// Select useful information that will be used for updating indexes later
 	var max, index uint
-	DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
-	DB.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	core.DB.Get(&max, "SELECT MAX(_Index) FROM TodoLists WHERE UserID = ?", user)
+	core.DB.Get(&index, "SELECT _Index FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 
-	results, _ := DB.Exec("DELETE FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
+	results, _ := core.DB.Exec("DELETE FROM TodoLists WHERE ID = ? AND UserID = ?", id, user)
 	if affected, _ := results.RowsAffected(); affected > 0 {
 		// Update indexes to be accurate after the delete operation
 		for i := index + 1; i <= max; i++ {
-			DB.Exec("UPDATE TodoLists SET _Index = ? WHERE _Index = ? AND UserID = ?", i-1, i, user)
+			core.DB.Exec("UPDATE TodoLists SET _Index = ? WHERE _Index = ? AND UserID = ?", i-1, i, user)
 		}
 	}
 

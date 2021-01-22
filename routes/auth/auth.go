@@ -1,4 +1,4 @@
-package routes
+package auth
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	core "github.com/very-amused/CSplan-API/core"
 )
 
 /* Authentication levels for this API serve as follows:
@@ -17,8 +19,8 @@ Level 1: Authorized to perform actions concerning the current session, view and 
 Level 2: Authorized to perform actions regarding other sessions, such as remote logout and lockdown (obtained through reverifying their current session by TOTP or email)
 */
 
-// AuthInfo - Information authorizing a user to perform certain actions with the API
-type AuthInfo struct {
+// Info - Information authorizing a user to perform certain actions with the API
+type Info struct {
 	UserID    uint
 	SessionID uint
 	AuthLevel int
@@ -37,21 +39,27 @@ func compareTokens(provided, correct []byte) (equal bool) {
 }
 
 var twoWeeks uint = 60 * 60 * 24 * 14
+var (
+	// AuthBypass - Enable to bypass normal authentication
+	AuthBypass = false
 
-var httpUnauthorized = Error{
-	Title:   "Unauthorized",
-	Message: "Missing or invalid authorization token(s)",
-	Status:  401}
-var httpForbidden = Error{
-	Title:   "Forbidden",
-	Message: "Insufficient authentication level for the requested route",
-	Status:  403}
-var unauthorized = AuthInfo{
-	AuthLevel: -1}
+	// HTTPUnauthorized - User is not authorized entirely
+	HTTPUnauthorized = core.HTTPError{
+		Title:   "Unauthorized",
+		Message: "Missing or invalid authorization token(s)",
+		Status:  401}
+	// HTTPForbidden - User is authorized, but for the requested route
+	HTTPForbidden = core.HTTPError{
+		Title:   "Forbidden",
+		Message: "Insufficient authentication level for the requested route",
+		Status:  403}
+	unauthorized = Info{
+		AuthLevel: -1}
+)
 
 // Authenticate - Authorize and identify a user for a authenticate route.
 // Second return value indicates whether the server is finished sending a response to the client
-func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
+func Authenticate(w http.ResponseWriter, r *http.Request) Info {
 	var userSession Session
 	tokenCookie, err := r.Cookie("Authorization")
 	if err != nil {
@@ -70,11 +78,11 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	if len(tokenParts) != 3 {
 		return unauthorized
 	}
-	userID, err := DecodeID(tokenParts[1])
+	userID, err := core.DecodeID(tokenParts[1])
 	if err != nil {
 		return unauthorized
 	}
-	sessionID, err := DecodeID(tokenParts[2])
+	sessionID, err := core.DecodeID(tokenParts[2])
 	if err != nil {
 		return unauthorized
 	}
@@ -87,7 +95,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 		return unauthorized
 	}
 
-	row := DB.QueryRow("SELECT Token, CSRFtoken FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
+	row := core.DB.QueryRow("SELECT Token, CSRFtoken FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
 
 	var session Session
 	row.Scan(&session.RawToken, &session.RawCSRFtoken)
@@ -95,8 +103,8 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 	if compareTokens(userSession.RawToken, session.RawToken) &&
 		(compareTokens(userSession.RawCSRFtoken, session.RawCSRFtoken) || AuthBypass) { // Don't check CSRF tokens if auth bypass is enabled
 		// Update token to show most recent time of use (prevents deletion in the middle of a session)
-		go DB.Exec("UPDATE Sessions SET LastUsed = ? WHERE ID = ?", time.Now().Unix(), sessionID)
-		return AuthInfo{
+		go core.DB.Exec("UPDATE Sessions SET LastUsed = ? WHERE ID = ?", time.Now().Unix(), sessionID)
+		return Info{
 			UserID:    userID,
 			SessionID: sessionID,
 			AuthLevel: 1}
@@ -110,7 +118,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) AuthInfo {
 // associated with the email sent
 func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if !AuthBypass {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Unauthorized",
 			Message: "Invalid authorization route requested. An authorization challenge must be requested and submitted.",
 			Status:  401})
@@ -120,7 +128,7 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 	if !user.exists() {
-		HTTPError(w, Error{
+		core.WriteError(w, core.HTTPError{
 			Title:   "Not Found",
 			Message: "This user doesn't exist.",
 			Status:  404})
@@ -128,19 +136,19 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Select the user's ID based on their email
-	DB.Get(&user, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+	core.DB.Get(&user, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
 	// Parse the user's device info and create a new session
 	user.parseDeviceInfo(r)
 	session, err := user.newSession()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
 	w.Header().Set("Set-Cookie", fmt.Sprintf("Authorization=%s; Max-Age=%d; HttpOnly", session.Token, twoWeeks))
 	// Don't write the HttpOnly token to the JSON response, this token must be kept from javascript access
 	json.NewEncoder(w).Encode(UserState{
-		EncodedID: EncodeID(user.ID),
+		EncodedID: core.EncodeID(user.ID),
 		Verified:  user.Verified})
 }

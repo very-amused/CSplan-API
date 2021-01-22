@@ -1,4 +1,4 @@
-package routes
+package auth
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	core "github.com/very-amused/CSplan-API/core"
 )
 
 // SessionInfo - Information identifying a session without giving away any authentication details
@@ -23,13 +24,13 @@ type SessionInfo struct {
 
 // GetSessions - Get a list of active sessions
 func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	userID := ctx.Value(key("user")).(uint)
-	sessionID := ctx.Value(key("session")).(uint)
+	userID := ctx.Value(core.Key("user")).(uint)
+	sessionID := ctx.Value(core.Key("session")).(uint)
 
-	rows, err := DB.Query("SELECT ID, DeviceInfo, Created, LastUsed FROM Sessions WHERE UserID = ?", userID)
+	rows, err := core.DB.Query("SELECT ID, DeviceInfo, Created, LastUsed FROM Sessions WHERE UserID = ?", userID)
 	defer rows.Close()
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 
@@ -39,7 +40,7 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		session := SessionInfo{
 			AuthLevel: 1}
 		rows.Scan(&session.ID, &session.DeviceInfo, &session.Created, &session.LastUsed)
-		session.EncodedID = EncodeID(session.ID)
+		session.EncodedID = core.EncodeID(session.ID)
 		// This flag is to inform clients to log the user out as soon as possible, so that the session can be automatically cleared
 		// (or clear it manually using an API call)
 		if uint(time.Now().Unix())-session.Created >= twoWeeks {
@@ -59,27 +60,27 @@ func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 // Logout - Log out from either a session specified by parameter, or the currently active session
 func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	userID := ctx.Value(key("user")).(uint)
-	sessionID := ctx.Value(key("session")).(uint)
+	userID := ctx.Value(core.Key("user")).(uint)
+	sessionID := ctx.Value(core.Key("session")).(uint)
 	idParam := mux.Vars(r)["id"]
 
 	// If no session ID is provided, assume logging out from current session
 	var err error
 	if len(idParam) == 0 {
-		DB.Exec("DELETE FROM Sessions WHERE ID = ?", sessionID)
+		core.DB.Exec("DELETE FROM Sessions WHERE ID = ?", sessionID)
 	} else {
-		sessionID, err := DecodeID(idParam)
+		sessionID, err := core.DecodeID(idParam)
 		if err != nil {
-			HTTPError(w, Error{
+			core.WriteError(w, core.HTTPError{
 				Title:   "Bad Request",
 				Message: "Malformed id param",
 				Status:  400})
 			return
 		}
-		DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
+		core.DB.Exec("DELETE FROM Sessions WHERE ID = ? AND UserID = ?", sessionID, userID)
 	}
 	if err != nil {
-		HTTPInternalServerError(w, err)
+		core.WriteError500(w, err)
 		return
 	}
 

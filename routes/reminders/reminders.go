@@ -1,4 +1,4 @@
-package routes
+package reminders
 
 import (
 	"context"
@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"github.com/very-amused/CSplan-API/core"
 )
+
+// NO CODE IN THIS FILE IS IN USE UNTIL FURTHER NOTICE
 
 // Init redis
 var ctx = context.Background()
@@ -68,7 +71,7 @@ type RedisFriendlyReminder struct {
 }
 
 func (reminder *Reminder) insert() error {
-	// If the timestamp is less or equal to 5 minutes in the future, it goes directly to redis, otherwise it's stored in MariaDB
+	// If the timestamp is less or equal to 5 minutes in the future, it goes directly to redis, otherwise it's stored in Mariacore.DB
 	if reminder.Timestamp-uint(time.Now().Unix()) <= uint(time.Minute*5) {
 		// Encode the reminder as json
 		r, _ := json.Marshal(reminder)
@@ -77,16 +80,16 @@ func (reminder *Reminder) insert() error {
 		return err
 	}
 
-	_, err := DB.Exec("INSERT INTO Reminders (ID, UserID, Title, _Timestamp, RetryAfter) VALUES (?, ?, ?, ?)",
+	_, err := core.DB.Exec("INSERT INTO Reminders (ID, UserID, Title, _Timestamp, RetryAfter) VALUES (?, ?, ?, ?)",
 		reminder.ID, reminder.UserID, reminder.Title, reminder.Timestamp)
 	return err
 }
 
 // cacheReminders - Move any reminders that are 5 minutes in the future or sooner to redis
-// (they still should stay in MariaDB until they're deleted by queryReminders)
+// (they still should stay in Mariacore.DB until they're deleted by queryReminders)
 // This should be called once every minute
 func cacheReminders() {
-	rows, _ := DB.Query("SELECT UserID, Title, _Timestamp FROM Reminders WHERE _Timestamp - UNIX_TIMESTAMP() <= 300")
+	rows, _ := core.DB.Query("SELECT UserID, Title, _Timestamp FROM Reminders WHERE _Timestamp - UNIX_TIMESTAMP() <= 300")
 	defer rows.Close()
 	for rows.Next() {
 		var reminder RedisFriendlyReminder
@@ -110,9 +113,9 @@ func queryReminders(now int64) {
 
 		// If the notification is sent successfully AND confirmed, defer its deletion, else postpone it by the user specified time
 		if true { // TODO: replace with check if webpush notif was sent successfully and not postponed
-			defer DB.Exec("DELETE FROM Reminders WHERE ID = ?", reminder.ID)
+			defer core.DB.Exec("DELETE FROM Reminders WHERE ID = ?", reminder.ID)
 		} else {
-			defer DB.Exec("UPDATE Reminders SET _Timestamp = ? WHERE ID = ?",
+			defer core.DB.Exec("UPDATE Reminders SET _Timestamp = ? WHERE ID = ?",
 				reminder.Timestamp+reminder.RetryAfter, reminder.ID)
 		}
 	}

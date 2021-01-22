@@ -19,7 +19,12 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
-	"github.com/very-amused/CSplan-API/routes"
+	"github.com/very-amused/CSplan-API/core"
+	"github.com/very-amused/CSplan-API/routes/auth"
+	"github.com/very-amused/CSplan-API/routes/crypto"
+	"github.com/very-amused/CSplan-API/routes/profile"
+	"github.com/very-amused/CSplan-API/routes/tags"
+	"github.com/very-amused/CSplan-API/routes/todo"
 )
 
 type HTTPHeaders map[string]string
@@ -33,61 +38,63 @@ func encode(s string) string {
 }
 
 var (
-	client *http.Client
-	auth   = routes.Session{}
-	user   = routes.User{
+	client  *http.Client
+	session = auth.Session{}
+	user    = auth.User{
 		Email: "user@test.com"}
 	password = []byte("correcthorsebatterystaple")
 
-	keys = routes.CryptoKeys{
+	keys = crypto.Keys{
 		PublicKey:  encode("public key"),
 		PrivateKey: encode("private key"),
 		PBKDF2salt: encode("secure salt")}
 
-	name = routes.Name{
+	name = profile.Name{
 		FirstName: encode("John"),
 		LastName:  encode("Doe"),
 		Username:  encode("JDoe"),
-		Meta: routes.Meta{
+		Meta: core.Meta{
 			CryptoKey: encode("EncryptedKey")}}
-	namePatch = routes.NamePatch{
+	namePatch = profile.NamePatch{
 		Username: encode("JDoe2")}
 
-	list = routes.TodoList{
+	list = todo.List{
 		Title: encode("Sample Todo List"),
-		Items: []routes.TodoItem{
+		Items: []todo.Item{
 			{
 				Title:       encode("Item 1"),
 				Description: encode("Sample Description"),
 				Done:        encode("false"),
 				Tags:        make([]string, 0)}},
-		Meta: routes.IndexedMeta{
+		Meta: core.IndexedMeta{
 			CryptoKey: encode("EncryptedKey")}}
-	listPatch = routes.TodoPatch{
+	listPatch = todo.Patch{
 		Title: encode("new title")}
 
-	tag = routes.Tag{
+	tag = tags.Tag{
 		Name:  encode("Sample Tag"),
 		Color: encode("#444"),
-		Meta: routes.TagMeta{
+		Meta: core.Meta{
 			CryptoKey: encode("EncryptedKey")}}
-	tagPatch = routes.TagPatch{
+	tagPatch = tags.Patch{
 		Name: encode("New Name"),
-		Meta: routes.TagMetaPatch{
+		Meta: core.MetaPatch{
 			CryptoKey: encode("New Key")}}
 
-	nolist = routes.NoList{
-		Items: []routes.TodoItem{
+	nolist = todo.NoList{
+		Items: []todo.Item{
 			{
 				Title:       encode("Nolist item"),
-				Description: encode("Sample Description")}},
-		Meta: routes.Meta{
+				Description: encode("Sample Description"),
+				Tags:        make([]string, 0)}},
+		Meta: core.Meta{
 			CryptoKey: encode("EncryptedKey")}}
-	nolistItemPatch = []routes.TodoItem{
+	nolistItemPatch = []todo.Item{
 		{
 			Title:       encode("New Item"),
-			Description: encode("This one is new")}}
-	nolistMetaPatch = routes.MetaPatch{
+			Description: encode("This one is new"),
+			Tags:        make([]string, 0)}}
+	nolistMetaPatch = core.MetaPatch{
 		CryptoKey: encode("New Key")}
 )
 
@@ -117,12 +124,12 @@ func DoRequest(
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if len(auth.Token) > 0 {
+	if len(session.Token) > 0 {
 		var cookie strings.Builder
 		cookie.WriteString("Authorization=")
-		cookie.WriteString(auth.Token)
+		cookie.WriteString(session.Token)
 		req.Header.Set("Cookie", cookie.String())
-		req.Header.Set("CSRF-Token", auth.CSRFtoken)
+		req.Header.Set("CSRF-Token", session.CSRFtoken)
 	}
 	for header, value := range headers {
 		req.Header.Set(header, value)
@@ -131,7 +138,7 @@ func DoRequest(
 	// Do the request
 	r, e = client.Do(req)
 	if e == nil && r.StatusCode != expectedStatus {
-		var httpErr routes.Error
+		var httpErr core.HTTPError
 		json.NewDecoder(r.Body).Decode(&httpErr)
 		// Format an error based on status if no response message is given
 		if len(httpErr.Message) == 0 {
@@ -169,21 +176,21 @@ func TestMain(m *testing.M) {
 	// Store auth tokens
 	cookieHeader := r.Header.Get("Set-Cookie")
 	cookie := strings.Split(cookieHeader, ";")[0]
-	auth.Token = strings.Split(cookie, "=")[1]
-	json.NewDecoder(r.Body).Decode(&auth)
+	session.Token = strings.Split(cookie, "=")[1]
+	json.NewDecoder(r.Body).Decode(&session)
 
 	// Run tests
 	exit := m.Run()
 
 	// Delete test account
-	r, err = DoRequest("DELETE", route("/account/delete"), nil, nil, 200)
+	r, err = DoRequest("DELETE", route("/delete_my_account_please"), nil, nil, 200)
 	if err != nil {
 		log.Fatalf("Failed to delete test account: %s", err)
 	}
 	// Repeat the request with confirmation token
-	var dt routes.DeleteToken
+	var dt auth.DeleteToken
 	json.NewDecoder(r.Body).Decode(&dt)
-	r, err = DoRequest("DELETE", route("/account/delete"), nil, HTTPHeaders{
+	r, err = DoRequest("DELETE", route("/delete_my_account_please"), nil, HTTPHeaders{
 		"X-Confirm": dt.Token}, 200)
 	if err != nil {
 		log.Fatalf("Failed to delete test account: %s", err)
@@ -193,7 +200,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestKeys(t *testing.T) {
-	var rBody routes.CryptoKeys
+	var rBody crypto.Keys
 	t.Run("Create Keypair", func(t *testing.T) {
 		_, err := DoRequest("POST", route("/keys"), keys, nil, 201)
 		if err != nil {
@@ -212,7 +219,7 @@ func TestKeys(t *testing.T) {
 	})
 	t.Run("Update Keypair", func(t *testing.T) {
 		keys.PublicKey = encode("new public key")
-		_, err := DoRequest("PATCH", route("/keys"), keys, nil, 204)
+		_, err := DoRequest("PATCH", route("/keys"), keys, nil, 200)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +238,7 @@ func TestKeys(t *testing.T) {
 
 func TestChallengeAuth(t *testing.T) {
 	var authKey []byte
-	var challenge routes.Challenge
+	var challenge auth.Challenge
 	var encoded string
 	var ivAndEncryptedData []byte
 	t.Run("PBKDF2", func(t *testing.T) {
@@ -241,8 +248,8 @@ func TestChallengeAuth(t *testing.T) {
 		encoded = base64.StdEncoding.EncodeToString(append(salt, authKey...))
 	})
 	t.Run("Update AuthKey", func(t *testing.T) {
-		_, err := DoRequest("PATCH", route("/authkey"), routes.AuthKeyPatch{
-			AuthKey: encoded}, nil, 204)
+		_, err := DoRequest("PATCH", route("/authkey"), auth.KeyPatch{
+			Key: encoded}, nil, 204)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -276,13 +283,13 @@ func TestChallengeAuth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var session routes.Session
+		var session auth.Session
 		json.NewDecoder(r.Body).Decode(&session)
 	})
 }
 
 func TestName(t *testing.T) {
-	var rBody routes.Name
+	var rBody profile.Name
 	t.Run("Create Name", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/name"), name, nil, 201)
 		if err != nil {
@@ -328,7 +335,7 @@ func TestName(t *testing.T) {
 }
 
 func TestTodo(t *testing.T) {
-	var rBody routes.TodoList
+	var rBody todo.List
 	t.Run("Create Todo List", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/todos"), list, nil, 201)
 		if err != nil {
@@ -375,7 +382,7 @@ func TestTodo(t *testing.T) {
 }
 
 func TestTags(t *testing.T) {
-	var rBody routes.Tag
+	var rBody tags.Tag
 	t.Run("Create Tag", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/tags"), tag, nil, 201)
 		if err != nil {
@@ -424,7 +431,7 @@ func TestTags(t *testing.T) {
 }
 
 func TestNoList(t *testing.T) {
-	var rBody routes.NoList
+	var rBody todo.NoList
 	t.Run("Create NoList", func(t *testing.T) {
 		r, err := DoRequest("POST", route("/nolist"), nolist, nil, 201)
 		if err != nil {
@@ -444,7 +451,7 @@ func TestNoList(t *testing.T) {
 		}
 	})
 	t.Run("Update Items", func(t *testing.T) {
-		_, err := DoRequest("PATCH", route("/nolist"), routes.NoList{
+		_, err := DoRequest("PATCH", route("/nolist"), todo.NoListPatch{
 			Items: nolistItemPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
@@ -453,7 +460,7 @@ func TestNoList(t *testing.T) {
 		}
 	})
 	t.Run("Update CryptoKey", func(t *testing.T) {
-		_, err := DoRequest("PATCH", route("/nolist"), routes.NoListPatch{
+		_, err := DoRequest("PATCH", route("/nolist"), todo.NoListPatch{
 			Meta: nolistMetaPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)

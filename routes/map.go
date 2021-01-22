@@ -5,6 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/very-amused/CSplan-API/core"
+	"github.com/very-amused/CSplan-API/routes/auth"
+	"github.com/very-amused/CSplan-API/routes/crypto"
+	"github.com/very-amused/CSplan-API/routes/profile"
+	"github.com/very-amused/CSplan-API/routes/tags"
+	"github.com/very-amused/CSplan-API/routes/todo"
 )
 
 // Route - Information to handle HTTP routes
@@ -19,147 +26,144 @@ var AuthBypass bool = false
 // Map - Static map of HTTP routes to their corresponding handlers
 var Map = make(map[string]*Route)
 
-// Private ctx keys
-type key string
-
 // Handler - Public handler wrapper for each route
 func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Handle authentication
 	if route.AuthLevel > 0 {
-		auth := Authenticate(w, r)
+		authLvl := auth.Authenticate(w, r)
 		// Send relevant 401/403 response if the user isn't properly authenticated for the route
-		if auth.AuthLevel == -1 {
-			HTTPError(w, httpUnauthorized)
+		if authLvl.AuthLevel == -1 {
+			core.WriteError(w, auth.HTTPUnauthorized)
 			return
-		} else if auth.AuthLevel < route.AuthLevel {
-			HTTPError(w, httpForbidden)
+		} else if authLvl.AuthLevel < route.AuthLevel {
+			core.WriteError(w, auth.HTTPForbidden)
 			return
 		}
 		// Add the user and session id to the route context
-		ctx = context.WithValue(ctx, key("user"), auth.UserID)
-		ctx = context.WithValue(ctx, key("session"), auth.SessionID)
+		ctx = context.WithValue(ctx, core.Key("user"), authLvl.UserID)
+		ctx = context.WithValue(ctx, core.Key("session"), authLvl.SessionID)
 	}
 	route.handler(ctx, w, r)
 }
 
 func init() {
 	Map["POST:/register"] = &Route{
-		handler:   Register,
+		handler:   auth.Register,
 		AuthLevel: 0}
 	Map["GET:/whoami"] = &Route{
-		handler:   WhoAmI,
+		handler:   auth.WhoAmI,
 		AuthLevel: 1}
 	/* Two separate HTTP requests (second one must contain a token sent in the first)
 	to this fairly difficult to hit by accident URL are needed to actually delete a user account,
-	making it essentially impossible to accomplish by accident
+	making it practically impossible to accomplish by accident
 	*/
 	Map["DELETE:/delete_my_account_please"] = &Route{
-		handler:   DeleteAccount,
+		handler:   auth.DeleteAccount,
 		AuthLevel: 1}
 
 	Map["POST:/challenge"] = &Route{
-		handler:   RequestChallenge,
+		handler:   auth.RequestChallenge,
 		AuthLevel: 0}
 	Map["POST:/challenge/{id}"] = &Route{
-		handler:   SubmitChallenge,
+		handler:   auth.SubmitChallenge,
 		AuthLevel: 0}
 	Map["POST:/login"] = &Route{
-		handler:   Login,
+		handler:   auth.Login,
 		AuthLevel: 0}
 
 	// Session management
 	Map["POST:/logout"] = &Route{
-		handler:   Logout,
+		handler:   auth.Logout,
 		AuthLevel: 1}
 	Map["POST:/logout/{id}"] = &Route{
-		handler:   Logout,
+		handler:   auth.Logout,
 		AuthLevel: 2}
 	Map["GET:/sessions"] = &Route{
-		handler:   GetSessions,
+		handler:   auth.GetSessions,
 		AuthLevel: 1}
 
 	Map["PATCH:/authkey"] = &Route{
-		handler:   UpdateAuthKey,
+		handler:   auth.UpdateKey,
 		AuthLevel: 1}
 
 	Map["POST:/keys"] = &Route{
-		handler:   AddKeys,
+		handler:   crypto.AddKeys,
 		AuthLevel: 1}
 	Map["GET:/keys"] = &Route{
-		handler:   GetKeys,
+		handler:   crypto.GetKeys,
 		AuthLevel: 1}
 	Map["PATCH:/keys"] = &Route{
-		handler:   UpdateKeys,
+		handler:   crypto.UpdateKeys,
 		AuthLevel: 1}
 
 	Map["GET:/settings"] = &Route{
-		handler:   GetSettings,
+		handler:   profile.GetSettings,
 		AuthLevel: 1}
 	Map["PATCH:/settings"] = &Route{
-		handler:   UpdateSettings,
+		handler:   profile.UpdateSettings,
 		AuthLevel: 1}
 
 	Map["POST:/name"] = &Route{
-		handler:   AddName,
+		handler:   profile.AddName,
 		AuthLevel: 1}
 	Map["GET:/name"] = &Route{
-		handler:   GetName,
+		handler:   profile.GetName,
 		AuthLevel: 1}
 	Map["PATCH:/name"] = &Route{
-		handler:   UpdateName,
+		handler:   profile.UpdateName,
 		AuthLevel: 1}
 	Map["DELETE:/name"] = &Route{
-		handler:   DeleteName,
+		handler:   profile.DeleteName,
 		AuthLevel: 1}
 
 	Map["POST:/todos"] = &Route{
-		handler:   AddTodo,
+		handler:   todo.AddTodo,
 		AuthLevel: 1}
 	Map["GET:/todos"] = &Route{
-		handler:   GetTodos,
+		handler:   todo.GetTodos,
 		AuthLevel: 1}
 	Map["GET:/todos/{id}"] = &Route{
-		handler:   GetTodo,
+		handler:   todo.GetTodo,
 		AuthLevel: 1}
 	Map["PATCH:/todos/{id}"] = &Route{
-		handler:   UpdateTodo,
+		handler:   todo.UpdateTodo,
 		AuthLevel: 1}
 	Map["DELETE:/todos/{id}"] = &Route{
-		handler:   DeleteTodo,
+		handler:   todo.DeleteTodo,
 		AuthLevel: 1}
 
 	Map["POST:/tags"] = &Route{
-		handler:   AddTag,
+		handler:   tags.AddTag,
 		AuthLevel: 1}
 	Map["GET:/tags"] = &Route{
-		handler:   GetTags,
+		handler:   tags.GetTags,
 		AuthLevel: 1}
 	Map["GET:/tags/{id}"] = &Route{
-		handler:   GetTag,
+		handler:   tags.GetTag,
 		AuthLevel: 1}
 	Map["PATCH:/tags/{id}"] = &Route{
-		handler:   UpdateTag,
+		handler:   tags.UpdateTag,
 		AuthLevel: 1}
 	Map["DELETE:/tags/{id}"] = &Route{
-		handler:   DeleteTag,
+		handler:   tags.DeleteTag,
 		AuthLevel: 1}
 
 	Map["POST:/nolist"] = &Route{
-		handler:   CreateNoList,
+		handler:   todo.CreateNoList,
 		AuthLevel: 1}
 	Map["PATCH:/nolist"] = &Route{
-		handler:   UpdateNoList,
+		handler:   todo.UpdateNoList,
 		AuthLevel: 1}
 	Map["GET:/nolist"] = &Route{
-		handler:   GetNoList,
+		handler:   todo.GetNoList,
 		AuthLevel: 1}
 }
 
 // CatchAll - Add a catchall route for otherwise unmatched routes
 func CatchAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	HTTPError(w, Error{
+	core.WriteError(w, core.HTTPError{
 		Title:   "Not Found",
 		Message: "The requested route could not be found",
 		Status:  404})

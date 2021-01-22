@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/very-amused/CSplan-API/middleware"
+	"github.com/gorilla/mux"
 
+	"github.com/very-amused/CSplan-API/middleware"
 	"github.com/very-amused/CSplan-API/routes"
 
-	"github.com/gorilla/mux"
+	// No clue why this needs a special name
+	a "github.com/very-amused/CSplan-API/routes/auth"
 )
 
 var logfile string
@@ -48,7 +50,7 @@ func loadMiddleware(r *mux.Router) {
 
 func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
-	flag.BoolVar(&routes.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
+	flag.BoolVar(&a.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
 	flag.StringVar(&logfile, "logfile", "", "File path for logging output. (rotation is handled in-house, old log files will be timestamped)")
 	flag.Parse()
 	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
