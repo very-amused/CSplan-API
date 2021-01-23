@@ -16,11 +16,12 @@ import (
 
 // Challenge - Encryption challenge to obtain authentication
 type Challenge struct {
-	ID          uint   `json:"-"`
-	EncodedID   string `json:"id"`
-	Data        []byte `json:"-"`
-	EncodedData string `json:"data"`
-	Salt        string `json:"salt"`
+	ID          uint        `json:"-"`
+	EncodedID   string      `json:"id" validate:"required"`
+	Data        []byte      `json:"-"`
+	EncodedData string      `json:"data" validate:"required"`
+	Salt        string      `json:"salt"`
+	HashParams  *HashParams `json:"hashParams,omitempty"`
 }
 
 func (challenge *Challenge) encryptData(block cipher.Block) error {
@@ -63,34 +64,35 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	// Get the user's ID
 	core.DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
 
-	// If there are 5 or more pending challenges for the user, decline providing a new one
-	var count int
-	core.DB.Get(&count, "SELECT COUNT(ID) FROM Challenges WHERE ID = ? AND Failed = 0")
-	if count > 5 {
+	// If there are 5+ pending challenges for the user, or 10+ failed attempts decline providing a new one
+	var pending uint
+	var failed uint
+	core.DB.Get(&pending, "SELECT COUNT(ID) FROM Challenges WHERE UserID = ? AND Failed = 0", user.ID)
+	core.DB.Get(&failed, "SELECT COUNT(ID) FROM Challenges WHERE UserID = ? AND Failed = 1", user.ID)
+	if pending >= 5 || failed >= 10 {
 		core.WriteError(w, core.HTTPError{
 			Title:   "Too Many Requests",
-			Message: "There are too many pending challenges requested to provide a new one. You are being ratelimited.",
+			Message: "There are too many pending/failed challenges requested to provide a new one. You are being ratelimited.",
 			Status:  429})
 		return
 	}
-
-	// Select and parse user's authentication key and PBKDF2 salt
+	// Select and parse user's authentication key and hash parameters
 	var challenge Challenge
 	var saltAndKey []byte
-	row := core.DB.QueryRow("SELECT AuthKey FROM AuthKeys WHERE UserID = ?", user.ID)
-	err := row.Scan(&saltAndKey)
+	row := core.DB.QueryRow("SELECT AuthKey, HashParams FROM AuthKeys WHERE UserID = ?", user.ID)
+	var encodedHashParams []byte
+	err := row.Scan(&saltAndKey, &encodedHashParams)
+	// Decode hash params
+	challenge.HashParams = &HashParams{}
+	json.Unmarshal(encodedHashParams, challenge.HashParams)
 	if err != nil {
 		core.WriteError500(w, err)
 		return
-	} else if len(saltAndKey) < 32 {
-		core.WriteError(w, core.HTTPError{
-			Title:   "Resource Conflict",
-			Message: "The authentication key belonging to this user is currently in an unprocessable state (less than 16 bytes in length excluding salt). PATCH /authKey to fix this.",
-			Status:  409})
-		return
 	}
-	challenge.Salt = base64.StdEncoding.EncodeToString(saltAndKey[0:16])
-	authKey := saltAndKey[16:]
+	// Slice salt and actual authKey using stored salt length (max 16)
+	saltLen := *challenge.HashParams.SaltLen
+	challenge.Salt = base64.StdEncoding.EncodeToString(saltAndKey[0:saltLen])
+	authKey := saltAndKey[saltLen:]
 
 	// Create a unique ID
 	challenge.ID, err = core.MakeUniqueID("Challenges")
@@ -156,7 +158,10 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	challenge.Data, err = base64.StdEncoding.DecodeString(challenge.EncodedData)
 
 	var correctData []byte
-	row := core.DB.QueryRow("SELECT _Data, UserID FROM Challenges WHERE ID = ? AND Failed = 0", challenge.ID)
+	// The final clause checks that no challenges older than 1min are selected,
+	// This accounts for the case where a partially unresponsive database must not allow a challenge to be attempted over and over again,
+	// because of it not being set as failed or deleted
+	row := core.DB.QueryRow("SELECT _Data, UserID FROM Challenges WHERE ID = ? AND Failed = 0 AND UNIX_TIMESTAMP() - _Timestamp <= 60", challenge.ID)
 	err = row.Scan(&correctData, &user.ID)
 	if err != nil {
 		core.WriteError404(w)
@@ -165,6 +170,7 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	// Compare lengths first to avoid range errors
 	if len(challenge.Data) != len(correctData) {
+		core.DB.Exec("UPDATE Challenges SET Failed = 1 WHERE ID = ?", challenge.ID)
 		core.WriteError(w, core.HTTPError{
 			Title:   "Challenge Failed",
 			Message: "Incorrect data provided.",
@@ -175,6 +181,7 @@ func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request
 	// If the data isn't equal to the
 	for i := range correctData {
 		if correctData[i] != challenge.Data[i] {
+			core.DB.Exec("UPDATE Challenges SET Failed = 1 WHERE ID = ?", challenge.ID)
 			core.WriteError(w, core.HTTPError{
 				Title:   "Challenge Failed",
 				Message: "Incorrect data provided.",

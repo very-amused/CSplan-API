@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS CSplanGo.Users (
 CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
 	UserID bigint unsigned NOT NULL,
 	AuthKey blob NOT NULL,
+	HashParams json NOT NULL,
 	PRIMARY KEY (UserID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );

@@ -15,12 +15,13 @@ import (
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID         uint   `json:"-"`
-	EncodedID  string `json:"id"`
-	Email      string `json:"email" validate:"required,email"`
-	Verified   bool   `json:"verified"`
-	DeviceInfo string `json:"-"`
-	AuthKey    string `json:"key" validate:"required"` // The AES-GCM authentication key used to provide encryption challenges for the user
+	ID         uint       `json:"-"`
+	EncodedID  string     `json:"id"`
+	Email      string     `json:"email" validate:"required,email"`
+	Verified   bool       `json:"verified"`
+	DeviceInfo string     `json:"-"`
+	AuthKey    string     `json:"key" validate:"required,base64,max=64"` // The AES-GCM authentication key used to provide encryption challenges for the user
+	HashParams HashParams `json:"hashParams" validate:"required"`
 }
 
 // UserState - State information for a user
@@ -54,9 +55,6 @@ type DeleteToken struct {
 type DeleteConfirm struct {
 	Message string `json:"message"`
 }
-
-// Scrypt Params - N, r, p, keyLen
-var _N, r, p, keyLen = 32768, 9, 1, 32
 
 // Regexes for parsing user device and browser
 type useragentMatch struct {
@@ -189,7 +187,11 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		core.WriteError(w, *err)
 		return
 	}
-
+	// Validate hash parameters
+	if err := user.HashParams.Validate(); !AuthBypass && err != nil {
+		core.WriteError(w, *err)
+		return
+	}
 	// Check if the user already exists
 	if user.exists() {
 		core.WriteError(w, core.HTTPError{
@@ -200,19 +202,11 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate the user's ID
-	for {
-		user.ID = core.MakeID()
-		rows, err := core.DB.Query("SELECT 1 FROM Users WHERE ID = ?", user.ID)
-		defer rows.Close()
-		if !rows.Next() {
-			break
-		} else {
-			if err != nil {
-				core.WriteError500(w, err)
-				return
-			}
-			user.ID++
-		}
+	var err error
+	user.ID, err = core.MakeUniqueID("Users")
+	if err != nil {
+		core.WriteError500(w, err)
+		return
 	}
 	user.EncodedID = core.EncodeID(user.ID)
 
@@ -232,8 +226,9 @@ func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the user's key info to the cryptokeys table
-	_, err = tx.Exec("INSERT INTO AuthKeys (UserID, AuthKey) VALUES (?, FROM_BASE64(?))",
-		user.ID, user.AuthKey)
+	encodedHashParams, _ := json.Marshal(user.HashParams)
+	_, err = tx.Exec("INSERT INTO AuthKeys (UserID, AuthKey, HashParams) VALUES (?, FROM_BASE64(?), ?)",
+		user.ID, user.AuthKey, encodedHashParams)
 	if err != nil {
 		core.WriteError500(w, err)
 		return

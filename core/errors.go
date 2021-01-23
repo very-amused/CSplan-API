@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-playground/validator"
@@ -43,8 +44,18 @@ func ValidateStruct(s interface{}) *HTTPError {
 	return nil
 }
 
+// WriteError400 - Write a JSON formatted bad request error with msg to w
+func WriteError400(w http.ResponseWriter, msg string) {
+	WriteError(w, HTTPError{
+		Title:   "Bad Request",
+		Message: msg,
+		Status:  400})
+}
+
 // WriteError500 - Write a JSON formatted internal server error based on error e to w
 func WriteError500(w http.ResponseWriter, e error) {
+	// Because these errors are at the server's fault, it is important to log their messages to gain an idea of where errors are frequently occuring
+	log.Println(e)
 	WriteError(w, HTTPError{
 		Title:   "Internal Server Error",
 		Message: e.Error(),

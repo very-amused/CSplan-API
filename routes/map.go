@@ -83,7 +83,7 @@ func init() {
 		handler:   auth.GetSessions,
 		AuthLevel: 1}
 
-	Map["PATCH:/authkey"] = &Route{
+	Map["PUT:/authkey"] = &Route{
 		handler:   auth.UpdateKey,
 		AuthLevel: 1}
 

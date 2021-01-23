@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/crypto/argon2"
 
 	"github.com/very-amused/CSplan-API/core"
 	"github.com/very-amused/CSplan-API/routes/auth"
@@ -237,19 +236,32 @@ func TestKeys(t *testing.T) {
 }
 
 func TestChallengeAuth(t *testing.T) {
+	// Argon2 variables
+	var tCost uint32 = 10
+	var mCost uint32 = 1024 * 128
+	var parallelism uint8 = 1
+	var saltLen uint8 = 16
+	params := auth.HashParams{
+		Type:        "argon2i",
+		TimeCost:    &tCost,
+		MemCost:     &mCost,
+		Parallelism: &parallelism,
+		SaltLen:     &saltLen}
+
 	var authKey []byte
 	var challenge auth.Challenge
 	var encoded string
 	var ivAndEncryptedData []byte
-	t.Run("PBKDF2", func(t *testing.T) {
+	t.Run("Argon2", func(t *testing.T) {
 		salt := make([]byte, 16)
 		rand.Read(salt)
-		authKey = pbkdf2.Key(password, salt, 200000, 32, sha512.New)
+		authKey = argon2.Key(password, salt, tCost, mCost, parallelism, 32)
 		encoded = base64.StdEncoding.EncodeToString(append(salt, authKey...))
 	})
 	t.Run("Update AuthKey", func(t *testing.T) {
-		_, err := DoRequest("PATCH", route("/authkey"), auth.KeyPatch{
-			Key: encoded}, nil, 204)
+		_, err := DoRequest("PUT", route("/authkey"), auth.KeyPatch{
+			Key:        encoded,
+			HashParams: params}, nil, 200)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -265,8 +277,8 @@ func TestChallengeAuth(t *testing.T) {
 	t.Run("Decrypt Challenge Data", func(t *testing.T) {
 		// Recreate the key derivation using the params sent by the API
 		salt, _ := base64.StdEncoding.DecodeString(challenge.Salt)
+		newKey := argon2.Key(password, salt, tCost, mCost, parallelism, 32)
 		iv := ivAndEncryptedData[0:12]
-		newKey := pbkdf2.Key(password, salt, 200000, 32, sha512.New)
 
 		// Decrypt the challenge data
 		encryptedData := ivAndEncryptedData[12:]
