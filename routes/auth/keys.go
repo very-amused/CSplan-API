@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	core "github.com/very-amused/CSplan-API/core"
+	"github.com/very-amused/CSplan-API/core"
 )
 
 // KeyPatch - A patch to update the key used to encrypt a user's authentication challenges
