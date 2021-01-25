@@ -14,12 +14,12 @@ jobs:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
     steps:
-			- uses: actions/checkout@v2
+      - uses: actions/checkout@v2
       - name: Setup DB
-				run: mysql --host 127.0.0.1 --port 3306 -uroot -proot <<< sql/schema.sql
-			- name: Build
-				run: go build
-			- name: Start API
-				run: nohup ./CSplan-API &
-			- name: Run Tests
-				run: go test -v .
+        run: mysql --host 127.0.0.1 --port 3306 -uroot -proot <<< sql/schema.sql
+      - name: Build
+        run: go build
+      - name: Start API
+        run: nohup ./CSplan-API &
+      - name: Run Tests
+        run: go test -v .
