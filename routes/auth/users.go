@@ -15,13 +15,13 @@ import (
 
 // User - Authentication and identification info for a user
 type User struct {
-	ID         uint       `json:"-"`
-	EncodedID  string     `json:"id"`
-	Email      string     `json:"email" validate:"required,email"`
-	Verified   bool       `json:"verified"`
-	DeviceInfo string     `json:"-"`
-	AuthKey    string     `json:"key" validate:"required,base64,max=64"` // The AES-GCM authentication key used to provide encryption challenges for the user
-	HashParams HashParams `json:"hashParams" validate:"required"`
+	ID         uint        `json:"-"`
+	EncodedID  string      `json:"id"`
+	Email      string      `json:"email" validate:"required,email"`
+	Verified   bool        `json:"verified"`
+	DeviceInfo string      `json:"-"`
+	AuthKey    string      `json:"key" validate:"required,base64,max=64"` // The AES-GCM authentication key used to provide encryption challenges for the user
+	HashParams *HashParams `json:"hashParams" validate:"required"`
 }
 
 // UserState - State information for a user

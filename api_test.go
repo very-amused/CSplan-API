@@ -32,8 +32,9 @@ const port = 3000
 const badDataErr = "Data retrieved is not equal to data expected"
 
 // Helper function for managing base64 encoding
-func encode(s string) string {
-	return base64.StdEncoding.EncodeToString([]byte(s))
+func encode(s string) *string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(s))
+	return &encoded
 }
 
 var (
@@ -43,55 +44,61 @@ var (
 		Email: "user@test.com"}
 	password = []byte("correcthorsebatterystaple")
 
+	// Argon2 variables
+	timeCost    uint32 = 10
+	memCost     uint32 = 1024 * 128
+	parallelism uint8  = 1
+	saltLen     uint8  = 16
+
 	keys = crypto.Keys{
-		PublicKey:  encode("public key"),
-		PrivateKey: encode("private key"),
-		PBKDF2salt: encode("secure salt")}
+		PublicKey:  *encode("public key"),
+		PrivateKey: *encode("private key"),
+		PBKDF2salt: *encode("secure salt")}
 
 	name = profile.Name{
-		FirstName: encode("John"),
-		LastName:  encode("Doe"),
-		Username:  encode("JDoe"),
+		FirstName: *encode("John"),
+		LastName:  *encode("Doe"),
+		Username:  *encode("JDoe"),
 		Meta: core.Meta{
-			CryptoKey: encode("EncryptedKey")}}
+			CryptoKey: *encode("EncryptedKey")}}
 	namePatch = profile.NamePatch{
-		Username: encode("JDoe2")}
+		Username: *encode("JDoe2")}
 
 	list = todo.List{
-		Title: encode("Sample Todo List"),
+		Title: *encode("Sample Todo List"),
 		Items: []todo.Item{
 			{
-				Title:       encode("Item 1"),
-				Description: encode("Sample Description"),
-				Done:        encode("false"),
+				Title:       *encode("Item 1"),
+				Description: *encode("Sample Description"),
+				Done:        *encode("false"),
 				Tags:        make([]string, 0)}},
 		Meta: core.IndexedMeta{
-			CryptoKey: encode("EncryptedKey")}}
+			CryptoKey: *encode("EncryptedKey")}}
 	listPatch = todo.Patch{
 		Title: encode("new title")}
 
 	tag = tags.Tag{
-		Name:  encode("Sample Tag"),
-		Color: encode("#444"),
+		Name:  *encode("Sample Tag"),
+		Color: *encode("#444"),
 		Meta: core.Meta{
-			CryptoKey: encode("EncryptedKey")}}
+			CryptoKey: *encode("EncryptedKey")}}
 	tagPatch = tags.Patch{
-		Name: encode("New Name"),
+		Name: *encode("New Name"),
 		Meta: core.MetaPatch{
 			CryptoKey: encode("New Key")}}
 
 	nolist = todo.NoList{
 		Items: []todo.Item{
 			{
-				Title:       encode("Nolist item"),
-				Description: encode("Sample Description"),
+				Title:       *encode("Nolist item"),
+				Description: *encode("Sample Description"),
 				Tags:        make([]string, 0)}},
 		Meta: core.Meta{
-			CryptoKey: encode("EncryptedKey")}}
+			CryptoKey: *encode("EncryptedKey")}}
 	nolistItemPatch = []todo.Item{
 		{
-			Title:       encode("New Item"),
-			Description: encode("This one is new"),
+			Title:       *encode("New Item"),
+			Description: *encode("This one is new"),
 			Tags:        make([]string, 0)}}
 	nolistMetaPatch = core.MetaPatch{
 		CryptoKey: encode("New Key")}
@@ -109,6 +116,9 @@ func DoRequest(
 		marshalled, err := json.Marshal(body)
 		if err != nil {
 			return nil, err
+		} else if strings.Contains(string(marshalled), "null") {
+			fmt.Println(url)
+			fmt.Println("Null value in marshal found:\n", string(marshalled))
 		}
 		buffer.Write(marshalled)
 	}
@@ -162,6 +172,12 @@ func TestMain(m *testing.M) {
 	authKey := make([]byte, 32)
 	rand.Read(authKey)
 	user.AuthKey = base64.StdEncoding.EncodeToString(authKey)
+	user.HashParams = &auth.HashParams{
+		Type:        "argon2i",
+		TimeCost:    &timeCost,
+		MemCost:     &memCost,
+		Parallelism: &parallelism,
+		SaltLen:     &saltLen}
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {
 		log.Fatalf("Failed to create test account: %s", err)
@@ -217,7 +233,7 @@ func TestKeys(t *testing.T) {
 		}
 	})
 	t.Run("Update Keypair", func(t *testing.T) {
-		keys.PublicKey = encode("new public key")
+		keys.PublicKey = *encode("new public key")
 		_, err := DoRequest("PATCH", route("/keys"), keys, nil, 200)
 		if err != nil {
 			t.Fatal(err)
@@ -236,18 +252,6 @@ func TestKeys(t *testing.T) {
 }
 
 func TestChallengeAuth(t *testing.T) {
-	// Argon2 variables
-	var tCost uint32 = 10
-	var mCost uint32 = 1024 * 128
-	var parallelism uint8 = 1
-	var saltLen uint8 = 16
-	params := auth.HashParams{
-		Type:        "argon2i",
-		TimeCost:    &tCost,
-		MemCost:     &mCost,
-		Parallelism: &parallelism,
-		SaltLen:     &saltLen}
-
 	var authKey []byte
 	var challenge auth.Challenge
 	var encoded string
@@ -255,13 +259,13 @@ func TestChallengeAuth(t *testing.T) {
 	t.Run("Argon2", func(t *testing.T) {
 		salt := make([]byte, 16)
 		rand.Read(salt)
-		authKey = argon2.Key(password, salt, tCost, mCost, parallelism, 32)
+		authKey = argon2.Key(password, salt, timeCost, memCost, parallelism, 32)
 		encoded = base64.StdEncoding.EncodeToString(append(salt, authKey...))
 	})
 	t.Run("Update AuthKey", func(t *testing.T) {
 		_, err := DoRequest("PUT", route("/authkey"), auth.KeyPatch{
 			Key:        encoded,
-			HashParams: params}, nil, 200)
+			HashParams: user.HashParams}, nil, 200)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -277,7 +281,7 @@ func TestChallengeAuth(t *testing.T) {
 	t.Run("Decrypt Challenge Data", func(t *testing.T) {
 		// Recreate the key derivation using the params sent by the API
 		salt, _ := base64.StdEncoding.DecodeString(challenge.Salt)
-		newKey := argon2.Key(password, salt, tCost, mCost, parallelism, 32)
+		newKey := argon2.Key(password, salt, timeCost, memCost, parallelism, 32)
 		iv := ivAndEncryptedData[0:12]
 
 		// Decrypt the challenge data
@@ -373,7 +377,7 @@ func TestTodo(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		list.Title = listPatch.Title
+		list.Title = *listPatch.Title
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
 		r, err := DoRequest("GET", route("/todos/"+list.EncodedID), nil, nil, 200)
@@ -421,7 +425,7 @@ func TestTags(t *testing.T) {
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
 		tag.Name = tagPatch.Name
-		tag.Meta.CryptoKey = tagPatch.Meta.CryptoKey
+		tag.Meta.CryptoKey = *tagPatch.Meta.CryptoKey
 		tag.Meta.Checksum = rBody.Meta.Checksum
 	})
 	t.Run("Updates Correctly Applied", func(t *testing.T) {
@@ -464,7 +468,7 @@ func TestNoList(t *testing.T) {
 	})
 	t.Run("Update Items", func(t *testing.T) {
 		_, err := DoRequest("PATCH", route("/nolist"), todo.NoListPatch{
-			Items: nolistItemPatch}, nil, 200)
+			Items: &nolistItemPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
 		} else {
@@ -473,11 +477,11 @@ func TestNoList(t *testing.T) {
 	})
 	t.Run("Update CryptoKey", func(t *testing.T) {
 		_, err := DoRequest("PATCH", route("/nolist"), todo.NoListPatch{
-			Meta: nolistMetaPatch}, nil, 200)
+			Meta: &nolistMetaPatch}, nil, 200)
 		if err != nil {
 			t.Error(err)
 		} else {
-			nolist.Meta.CryptoKey = nolistMetaPatch.CryptoKey
+			nolist.Meta.CryptoKey = *nolistMetaPatch.CryptoKey
 			nolist.Meta.Checksum = nolistMetaPatch.Checksum
 		}
 	})

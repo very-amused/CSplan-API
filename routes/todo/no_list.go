@@ -16,8 +16,8 @@ type NoList struct {
 
 // NoListPatch - A patch to an existing nolist collection
 type NoListPatch struct {
-	Items []Item         `json:"items" validate:"dive"`
-	Meta  core.MetaPatch `json:"meta"`
+	Items *[]Item         `json:"items,omitempty" validate:"omitempty,dive"`
+	Meta  *core.MetaPatch `json:"meta,omitempty"`
 }
 
 // CreateNoList - The creation of a nolist collection should be automatically accomplished at register-time,
@@ -75,24 +75,17 @@ func UpdateNoList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Marshal the items sent
-	marshalled, err := json.Marshal(patch.Items)
-	if err != nil {
-		core.WriteError500(w, err)
-		return
-	}
-	encoded := string(marshalled)
-
 	// Update the collection's items (if included in the request)
-	if len(patch.Items) > 0 {
-		_, err = core.DB.Exec("UPDATE NoList SET Items = ? WHERE UserID = ?", encoded, user)
+	if patch.Items != nil {
+		marshalled, _ := json.Marshal(patch.Items)
+		_, err := core.DB.Exec("UPDATE NoList SET Items = ? WHERE UserID = ?", marshalled, user)
 		if err != nil {
 			core.WriteError500(w, err)
 			return
 		}
 	}
-	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = core.DB.Exec("UPDATE NoList SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", patch.Meta.CryptoKey, user)
+	if patch.Meta != nil && patch.Meta.CryptoKey != nil {
+		_, err := core.DB.Exec("UPDATE NoList SET CryptoKey = FROM_BASE64(?) WHERE UserID = ?", *patch.Meta.CryptoKey, user)
 		if err != nil {
 			core.WriteError500(w, err)
 			return

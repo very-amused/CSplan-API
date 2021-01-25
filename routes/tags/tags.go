@@ -180,8 +180,8 @@ func UpdateTag(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if len(patch.Meta.CryptoKey) > 0 {
-		_, err = core.DB.Exec("UPDATE Tags SET CryptoKey = FROM_BASE64(?) WHERE ID = ?", patch.Meta.CryptoKey, id)
+	if patch.Meta.CryptoKey != nil {
+		_, err = core.DB.Exec("UPDATE Tags SET CryptoKey = FROM_BASE64(?) WHERE ID = ?", *patch.Meta.CryptoKey, id)
 		if err != nil {
 			core.WriteError500(w, err)
 			return

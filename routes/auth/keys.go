@@ -10,8 +10,8 @@ import (
 
 // KeyPatch - A patch to update the key used to encrypt a user's authentication challenges
 type KeyPatch struct {
-	Key        string     `json:"key" validate:"required,base64,max=64"`
-	HashParams HashParams `json:"hashParams" validate:"required"`
+	Key        string      `json:"key" validate:"required,base64,max=64"`
+	HashParams *HashParams `json:"hashParams" validate:"required"`
 }
 
 // UpdateKey - Update a user's authentication key

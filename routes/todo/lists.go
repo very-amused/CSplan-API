@@ -56,15 +56,15 @@ type Response struct {
 
 // Patch - Patch to update a todolist
 type Patch struct {
-	Title string           `json:"title" validate:"omitempty,base64,max=255"`
-	Items []Item           `json:"items" validate:"dive"`
-	Meta  IndexedMetaPatch `json:"meta"`
+	Title *string           `json:"title,omitempty" validate:"omitempty,base64,max=255"`
+	Items *[]Item           `json:"items,omitempty" validate:"omitempty,dive"`
+	Meta  *IndexedMetaPatch `json:"meta,omitempty"`
 }
 
 // IndexedMetaPatch - Same as MetaPatch but with index
 type IndexedMetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=700"`
-	Index     uint   `json:"index" db:"_Index"`
+	CryptoKey string `json:"cryptoKey,omitempty" validate:"omitempty,base64,max=700"`
+	Index     *uint  `json:"index,omitempty" db:"_Index"`
 }
 
 // parseID - Parse a uint ID from a string representation
@@ -288,21 +288,21 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Patch only the fields specified in the request
 	var updates []string
 	var args []interface{}
-	if len(patch.Title) > 0 {
+	if patch.Title != nil {
 		updates = append(updates, "Title = FROM_BASE64(?)")
-		args = append(args, patch.Title)
+		args = append(args, *patch.Title)
 	}
 	if patch.Items != nil {
 		// Avoid being encoded as null
-		if len(patch.Items) == 0 {
-			patch.Items = make([]Item, 0)
+		if len(*patch.Items) == 0 {
+			*patch.Items = make([]Item, 0)
 		}
 		m, _ := json.Marshal(patch.Items)
 		encoded := string(m)
 		updates = append(updates, "Items = ?")
 		args = append(args, encoded)
 	}
-	if len(patch.Meta.CryptoKey) > 0 {
+	if patch.Meta != nil && len(patch.Meta.CryptoKey) > 0 {
 		updates = append(updates, "CryptoKey = FROM_BASE64(?)")
 		args = append(args, patch.Meta.CryptoKey)
 	}
@@ -326,9 +326,9 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If there's an index shift specified, perform it
-	n := patch.Meta.Index
 	o := state.Index
-	if n != o {
+	if patch.Meta != nil && (*patch.Meta).Index != nil && *(*patch.Meta).Index != o {
+		n := *patch.Meta.Index
 		// Initiate a transaction, so if any step fails, things are not left in a broken state
 		tx, err := core.DB.Beginx()
 		if err != nil {

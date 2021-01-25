@@ -29,8 +29,8 @@ type IndexedMeta struct {
 
 // MetaPatch - same as Meta, but with alloance for empty CryptoKeys, for use in PATCH requests
 type MetaPatch struct {
-	CryptoKey string `json:"cryptoKey" validate:"omitempty,base64,max=700"`
-	Checksum  string `json:"checksum"`
+	CryptoKey *string `json:"cryptoKey,omitempty" validate:"omitempty,base64,max=700"`
+	Checksum  string  `json:"checksum"`
 }
 
 // StateResponse - Response containing only meta.checksum
