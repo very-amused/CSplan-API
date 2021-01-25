@@ -20,6 +20,6 @@ jobs:
       - name: Build
         run: go build
       - name: Start API
-        run: MARIADB_PASSWORD="root" nohup ./CSplan-API -db-user=root &
+        run: MARIADB_PASSWORD="root" nohup ./CSplan-API -db-user=root -allow-auth-bypass &
       - name: Run Tests
         run: go test -v .
