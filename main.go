@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/very-amused/CSplan-API/core"
 	"github.com/very-amused/CSplan-API/middleware"
 	"github.com/very-amused/CSplan-API/routes"
 
@@ -53,6 +54,7 @@ func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
 	flag.BoolVar(&auth.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
 	flag.StringVar(&logfile, "logfile", "", "File path for logging output. (rotation is handled in-house, old log files will be timestamped)")
+	flag.StringVar(&core.User, "db-user", "admin", "User to connect to MariaDB as. (password is specified as MARIADB_PASSWORD)")
 	flag.Parse()
 	if auth.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
 		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
@@ -64,6 +66,7 @@ func parseFlags() {
 func main() {
 	r := mux.NewRouter()
 	parseFlags()
+	core.DBConnect()
 	loadMiddleware(r)
 	loadRoutes(r)
 

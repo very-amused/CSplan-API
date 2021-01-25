@@ -7,6 +7,7 @@ SELECT (60 * 60) INTO @OneHour;
 SELECT (14 * 24 * 60 * 60) INTO @TwoWeeks;
 
 ---- Tables
+CREATE DATABASE IF NOT EXISTS CSplanGo;
 
 -- Authentication - Users and Tokens
 CREATE TABLE IF NOT EXISTS CSplanGo.Users (

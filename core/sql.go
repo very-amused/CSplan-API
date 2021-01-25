@@ -15,16 +15,18 @@ import (
 var DB *sqlx.DB
 
 // DB constants
-var user string = "admin"
-var password string = os.Getenv("MARIADB_PASSWORD")
-var database string = "CSplanGo"
+var User = "admin"
+var password = os.Getenv("MARIADB_PASSWORD")
+
+const database = "CSplanGo"
 
 // dsn - Return SQL data source name
 func dsn() string {
-	return fmt.Sprintf("%s:%s@/%s", user, password, database)
+	return fmt.Sprintf("%s:%s@/%s", User, password, database)
 }
 
-func init() {
+// Connect to the database, should be called after parsing flags
+func DBConnect() {
 	db, err := sqlx.Connect("mysql", dsn())
 	if err != nil {
 		log.Fatalf("Failed to connect to MariaDB:\n%s", err)
