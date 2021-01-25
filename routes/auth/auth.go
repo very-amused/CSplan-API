@@ -58,8 +58,7 @@ var (
 )
 
 // Authenticate - Authorize and identify a user for a authenticate route.
-// Second return value indicates whether the server is finished sending a response to the client
-func Authenticate(w http.ResponseWriter, r *http.Request) Info {
+func Authenticate(r *http.Request) Info {
 	var userSession Session
 	tokenCookie, err := r.Cookie("Authorization")
 	if err != nil {
@@ -116,7 +115,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) Info {
 
 // Login - Bypass the challenge authentication system, and simply return either a 409 or a token for the account
 // associated with the email sent
-func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func Login(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	if !AuthBypass {
 		core.WriteError(w, core.HTTPError{
 			Title:   "Unauthorized",

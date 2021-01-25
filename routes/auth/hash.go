@@ -8,17 +8,17 @@ import (
 
 // HashParams - Parameters supplied to a hash function that derives the user's password into a key
 type HashParams struct {
-	Type        string  `json:"type"`
-	SaltLen     *uint8  `json:"saltLen"`
-	TimeCost    *uint32 `json:"t_cost"`
-	MemCost     *uint32 `json:"m_cost"`
-	Parallelism *uint8  `json:"parallelism"`
+	Type     string  `json:"type"`
+	SaltLen  *uint8  `json:"saltLen"`
+	TimeCost *uint32 `json:"timeCost"`
+	MemCost  *uint32 `json:"memCost"`
+	Threads  *uint8  `json:"threads"`
 }
 
 // Argon2 max values
 const argon2MaxTimeCost = 10
 const argon2MaxMemCost = 2097152 // 2GiB
-const argon2MaxParallelism = 1   // Restrict to 1 thread
+const argon2MaxThreads = 1       // Restrict to 1 thread
 
 // Validate a set of HashParams
 func (h HashParams) Validate() (err *core.HTTPError) {
@@ -31,7 +31,7 @@ func (h HashParams) Validate() (err *core.HTTPError) {
 		// Make sure all needed parameters are supplied
 		if h.TimeCost == nil ||
 			h.MemCost == nil ||
-			h.Parallelism == nil ||
+			h.Threads == nil ||
 			h.SaltLen == nil {
 			err.Message = "Missing hash parameters (argon2i: t_cost, m_cost, parallelism)."
 			return err
@@ -46,8 +46,8 @@ func (h HashParams) Validate() (err *core.HTTPError) {
 		} else if *h.MemCost < 1 || *h.MemCost > argon2MaxMemCost {
 			err.Message = fmt.Sprintf("Invalid memory cost (argon2i, 1-%d).", argon2MaxMemCost)
 			return err
-		} else if *h.Parallelism < 1 || *h.Parallelism > argon2MaxParallelism {
-			err.Message = fmt.Sprintf("Invalid parallelism (argon2i, 1-%d).", argon2MaxParallelism)
+		} else if *h.Threads < 1 || *h.Threads > argon2MaxThreads {
+			err.Message = fmt.Sprintf("Invalid parallelism (argon2i, 1-%d).", argon2MaxThreads)
 			return err
 		}
 		break

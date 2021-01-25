@@ -20,9 +20,6 @@ type Route struct {
 	AuthLevel int
 }
 
-// AuthBypass - An unsafe bypass flag for user authentication
-var AuthBypass bool = false
-
 // Map - Static map of HTTP routes to their corresponding handlers
 var Map = make(map[string]*Route)
 
@@ -31,7 +28,7 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Handle authentication
 	if route.AuthLevel > 0 {
-		authLvl := auth.Authenticate(w, r)
+		authLvl := auth.Authenticate(r)
 		// Send relevant 401/403 response if the user isn't properly authenticated for the route
 		if authLvl.AuthLevel == -1 {
 			core.WriteError(w, auth.HTTPUnauthorized)
@@ -47,7 +44,8 @@ func (route Route) Handler(w http.ResponseWriter, r *http.Request) {
 	route.handler(ctx, w, r)
 }
 
-func init() {
+// LoadRoutes - Load all routes, should be called after flags are parsed
+func LoadRoutes() {
 	Map["POST:/register"] = &Route{
 		handler:   auth.Register,
 		AuthLevel: 0}
@@ -68,9 +66,11 @@ func init() {
 	Map["POST:/challenge/{id}"] = &Route{
 		handler:   auth.SubmitChallenge,
 		AuthLevel: 0}
-	Map["POST:/login"] = &Route{
-		handler:   auth.Login,
-		AuthLevel: 0}
+	if auth.AuthBypass {
+		Map["POST:/login"] = &Route{
+			handler:   auth.Login,
+			AuthLevel: 0}
+	}
 
 	// Session management
 	Map["POST:/logout"] = &Route{
@@ -161,7 +161,7 @@ func init() {
 }
 
 // CatchAll - Add a catchall route for otherwise unmatched routes
-func CatchAll(w http.ResponseWriter, r *http.Request) {
+func CatchAll(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	core.WriteError(w, core.HTTPError{
 		Title:   "Not Found",

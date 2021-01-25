@@ -23,7 +23,10 @@ func UpdateKey(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		core.WriteError(w, *err)
 		return
 	} else if err := patch.HashParams.Validate(); err != nil {
-		core.WriteError(w, *err)
+		core.WriteError(w, core.HTTPError{
+			Title:   "Validation Error",
+			Message: err.Error(),
+			Status:  400})
 		return
 	}
 

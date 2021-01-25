@@ -180,7 +180,7 @@ func (user *User) newSession() (session Session, e error) {
 }
 
 // Register - Create a new account
-func Register(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func Register(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 	if err := core.ValidateStruct(user); err != nil {

@@ -83,8 +83,8 @@ var (
 		Meta: core.Meta{
 			CryptoKey: *encode("EncryptedKey")}}
 	tagPatch = tags.Patch{
-		Name: *encode("New Name"),
-		Meta: core.MetaPatch{
+		Name: encode("New Name"),
+		Meta: &core.MetaPatch{
 			CryptoKey: encode("New Key")}}
 
 	nolist = todo.NoList{
@@ -173,11 +173,11 @@ func TestMain(m *testing.M) {
 	rand.Read(authKey)
 	user.AuthKey = base64.StdEncoding.EncodeToString(authKey)
 	user.HashParams = &auth.HashParams{
-		Type:        "argon2i",
-		TimeCost:    &timeCost,
-		MemCost:     &memCost,
-		Parallelism: &parallelism,
-		SaltLen:     &saltLen}
+		Type:     "argon2i",
+		TimeCost: &timeCost,
+		MemCost:  &memCost,
+		Threads:  &parallelism,
+		SaltLen:  &saltLen}
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {
 		log.Fatalf("Failed to create test account: %s", err)
@@ -424,7 +424,7 @@ func TestTags(t *testing.T) {
 			t.Error(err)
 		}
 		json.NewDecoder(r.Body).Decode(&rBody)
-		tag.Name = tagPatch.Name
+		tag.Name = *tagPatch.Name
 		tag.Meta.CryptoKey = *tagPatch.Meta.CryptoKey
 		tag.Meta.Checksum = rBody.Meta.Checksum
 	})

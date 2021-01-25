@@ -23,7 +23,7 @@ type SessionInfo struct {
 }
 
 // GetSessions - Get a list of active sessions
-func GetSessions(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func GetSessions(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
 	userID := ctx.Value(core.Key("user")).(uint)
 	sessionID := ctx.Value(core.Key("session")).(uint)
 

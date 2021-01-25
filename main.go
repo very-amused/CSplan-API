@@ -15,12 +15,13 @@ import (
 	"github.com/very-amused/CSplan-API/routes"
 
 	// No clue why this needs a special name
-	a "github.com/very-amused/CSplan-API/routes/auth"
+	"github.com/very-amused/CSplan-API/routes/auth"
 )
 
 var logfile string
 
 func loadRoutes(r *mux.Router) {
+	routes.LoadRoutes()
 	for key, route := range routes.Map {
 		// Parse method and path from route key
 		slice := strings.Split(key, ":")
@@ -50,10 +51,10 @@ func loadMiddleware(r *mux.Router) {
 
 func parseFlags() {
 	// Handle auth bypass (used in development to avoid the tediousness of a crypto challenge handshake)
-	flag.BoolVar(&a.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
+	flag.BoolVar(&auth.AuthBypass, "allow-auth-bypass", false, "Bypass the authentication system for the purpose of running tests in development.")
 	flag.StringVar(&logfile, "logfile", "", "File path for logging output. (rotation is handled in-house, old log files will be timestamped)")
 	flag.Parse()
-	if routes.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
+	if auth.AuthBypass && os.Getenv("CSPLAN_NO_BYPASS_WARNING") != "true" {
 		fmt.Println("\x1b[31mSECURITY WARNING: Authentication bypass is enabled.\n",
 			"This flag allows users to completely and totally bypass the authentication system, and MUST NOT be used in production.\n",
 			"To disable this message, set the environment variable CSPLAN_NO_BYPASS_WARNING to 'true'.\x1b[0m")

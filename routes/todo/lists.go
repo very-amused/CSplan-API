@@ -327,7 +327,7 @@ func UpdateTodo(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 	// If there's an index shift specified, perform it
 	o := state.Index
-	if patch.Meta != nil && (*patch.Meta).Index != nil && *(*patch.Meta).Index != o {
+	if patch.Meta != nil && patch.Meta.Index != nil && *patch.Meta.Index != o {
 		n := *patch.Meta.Index
 		// Initiate a transaction, so if any step fails, things are not left in a broken state
 		tx, err := core.DB.Beginx()

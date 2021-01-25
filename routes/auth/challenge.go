@@ -41,7 +41,7 @@ func (challenge *Challenge) encryptData(block cipher.Block) error {
 }
 
 // RequestChallenge - Request an authentication challenge
-func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	// Enforce action verbage
 	if r.URL.Query().Get("action") != "request" {
 		core.WriteError(w, core.HTTPError{
@@ -128,7 +128,7 @@ func RequestChallenge(ctx context.Context, w http.ResponseWriter, r *http.Reques
 }
 
 // SubmitChallenge - Submit an authentication challenge
-func SubmitChallenge(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func SubmitChallenge(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	// Enforce action verbage
 	if r.URL.Query().Get("action") != "submit" {
 		core.WriteError(w, core.HTTPError{
