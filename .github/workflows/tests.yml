@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Setup DB
-        run: mysql --host 127.0.0.1 --port 3306 -uroot -proot <<< sql/schema.sql
+        run: mysql --host 127.0.0.1 --port 3306 -uroot -proot < sql/schema.sql
       - name: Build
         run: go build
       - name: Start API
