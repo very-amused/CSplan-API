@@ -17,7 +17,7 @@ import (
 // Challenge - Encryption challenge to obtain authentication
 type Challenge struct {
 	ID          uint        `json:"-"`
-	EncodedID   string      `json:"id" validate:"required"`
+	EncodedID   string      `json:"id"`
 	Data        []byte      `json:"-"`
 	EncodedData string      `json:"data" validate:"required"`
 	Salt        string      `json:"salt"`

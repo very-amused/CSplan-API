@@ -28,26 +28,8 @@ func (h HashParams) Validate() (err *core.HTTPError) {
 		Status:  400}
 	switch h.Type {
 	case "argon2i":
-		// Make sure all needed parameters are supplied
-		if h.TimeCost == nil ||
-			h.MemCost == nil ||
-			h.Threads == nil ||
-			h.SaltLen == nil {
-			err.Message = "Missing hash parameters (argon2i: t_cost, m_cost, parallelism)."
-			return err
-		}
-		// Validate each parameter
-		if *h.SaltLen > 16 {
-			err.Message = "Invalid salt length (argon2i, max 16)."
-			return err
-		} else if *h.TimeCost < 1 || *h.TimeCost > argon2MaxTimeCost {
-			err.Message = fmt.Sprintf("Invalid time cost (argon2i, 1-%d).", argon2MaxTimeCost)
-			return err
-		} else if *h.MemCost < 1 || *h.MemCost > argon2MaxMemCost {
-			err.Message = fmt.Sprintf("Invalid memory cost (argon2i, 1-%d).", argon2MaxMemCost)
-			return err
-		} else if *h.Threads < 1 || *h.Threads > argon2MaxThreads {
-			err.Message = fmt.Sprintf("Invalid parallelism (argon2i, 1-%d).", argon2MaxThreads)
+		if e := h.validateArgon2(); e != nil {
+			err.Message = e.Error()
 			return err
 		}
 		break
@@ -58,5 +40,27 @@ func (h HashParams) Validate() (err *core.HTTPError) {
 	}
 
 	// If err isn't returned at any point previously, validation was successful and nil can be returned
+	return nil
+}
+
+func (h HashParams) validateArgon2() (e error) {
+	// Make sure all needed parameters are supplied
+	if h.TimeCost == nil ||
+		h.MemCost == nil ||
+		h.Threads == nil ||
+		h.SaltLen == nil {
+		return fmt.Errorf("Missing hash parameters (argon2i: timeCost, memCost, threads).")
+	}
+	// Validate each parameter
+	if *h.SaltLen > 16 {
+		return fmt.Errorf("Invalid salt length (argon2i, max 16).")
+	} else if *h.TimeCost < 1 || *h.TimeCost > argon2MaxTimeCost {
+		return fmt.Errorf("Invalid time cost (argon2i, 1-%d).", argon2MaxTimeCost)
+	} else if *h.MemCost < 1 || *h.MemCost > argon2MaxMemCost {
+		return fmt.Errorf("Invalid memory cost (argon2i, 1-%d).", argon2MaxMemCost)
+	} else if *h.Threads < 1 || *h.Threads > argon2MaxThreads {
+		return fmt.Errorf("Invalid thread count (argon2i, 1-%d).", argon2MaxThreads)
+	}
+
 	return nil
 }

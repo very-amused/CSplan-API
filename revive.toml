@@ -8,7 +8,6 @@ warningCode = 0
 [rule.context-as-argument]
 [rule.context-keys-type]
 [rule.error-return]
-[rule.error-strings]
 [rule.error-naming]
 [rule.if-return]
 [rule.increment-decrement]

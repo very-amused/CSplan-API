@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -37,6 +38,9 @@ func encode(s string) *string {
 	return &encoded
 }
 
+// Flags
+var leaveData = flag.Bool("leave-data", false, "If true, tests will exit without removing any data from the test user from the DB. This is helpful to perform manual inspection of this data.")
+
 var (
 	client  *http.Client
 	session = auth.Session{}
@@ -50,10 +54,18 @@ var (
 	parallelism uint8  = 1
 	saltLen     uint8  = 16
 
+	hashParams = auth.HashParams{
+		Type:     "argon2i",
+		TimeCost: &timeCost,
+		MemCost:  &memCost,
+		Threads:  &parallelism,
+		SaltLen:  &saltLen}
+
 	keys = crypto.Keys{
 		PublicKey:  *encode("public key"),
 		PrivateKey: *encode("private key"),
-		PBKDF2salt: *encode("secure salt")}
+		HashSalt:   *encode("secure salt"),
+		HashParams: &hashParams}
 
 	name = profile.Name{
 		FirstName: *encode("John"),
@@ -172,12 +184,7 @@ func TestMain(m *testing.M) {
 	authKey := make([]byte, 32)
 	rand.Read(authKey)
 	user.AuthKey = base64.StdEncoding.EncodeToString(authKey)
-	user.HashParams = &auth.HashParams{
-		Type:     "argon2i",
-		TimeCost: &timeCost,
-		MemCost:  &memCost,
-		Threads:  &parallelism,
-		SaltLen:  &saltLen}
+	user.HashParams = &hashParams
 	r, err := DoRequest("POST", route("/register"), user, nil, 201)
 	if err != nil {
 		log.Fatalf("Failed to create test account: %s", err)
@@ -197,6 +204,10 @@ func TestMain(m *testing.M) {
 	// Run tests
 	exit := m.Run()
 
+	// If side effects are requested, exit without deleting any data
+	if *leaveData == true {
+		return
+	}
 	// Delete test account
 	r, err = DoRequest("DELETE", route("/delete_my_account_please"), nil, nil, 200)
 	if err != nil {
@@ -232,9 +243,37 @@ func TestKeys(t *testing.T) {
 			t.Fatal(badDataErr)
 		}
 	})
+	t.Run("Incomplete Patch", func(t *testing.T) {
+		// Can't update private key without also updating public key or hash params
+		_, err := DoRequest("PATCH", route("/keys"), crypto.KeysPatch{
+			PrivateKey: &keys.PrivateKey}, nil, 412)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Invalid Hash Parameters", func(t *testing.T) {
+		newHashParams := auth.HashParams{
+			Type:     "argon2i",
+			SaltLen:  hashParams.SaltLen,
+			MemCost:  hashParams.MemCost,
+			TimeCost: new(uint32),
+			Threads:  new(uint8)}
+		*newHashParams.TimeCost = 15
+		*newHashParams.Threads = 2
+		_, err := DoRequest("PATCH", route("/keys"), crypto.KeysPatch{
+			HashParams: &newHashParams,
+			HashSalt:   encode("new salt"),
+			PrivateKey: &keys.PrivateKey}, nil, 400)
+		if err != nil {
+			t.Error(err)
+		}
+	})
 	t.Run("Update Keypair", func(t *testing.T) {
 		keys.PublicKey = *encode("new public key")
-		_, err := DoRequest("PATCH", route("/keys"), keys, nil, 200)
+		keys.PrivateKey = *encode("new private key")
+		_, err := DoRequest("PATCH", route("/keys"), crypto.KeysPatch{
+			PublicKey:  &keys.PublicKey,
+			PrivateKey: &keys.PrivateKey}, nil, 200)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,6 +382,9 @@ func TestName(t *testing.T) {
 		}
 	})
 	t.Run("Delete Name", func(t *testing.T) {
+		if *leaveData {
+			return
+		}
 		_, err := DoRequest("DELETE", route("/name"), nil, nil, 204)
 		if err != nil {
 			t.Fatal(err)
@@ -390,6 +432,9 @@ func TestTodo(t *testing.T) {
 		}
 	})
 	t.Run("Delete Todo List", func(t *testing.T) {
+		if *leaveData {
+			return
+		}
 		_, err := DoRequest("DELETE", route("/todos/"+list.EncodedID), nil, nil, 204)
 		if err != nil {
 			t.Fatal(err)
@@ -439,6 +484,9 @@ func TestTags(t *testing.T) {
 		}
 	})
 	t.Run("Delete Tag", func(t *testing.T) {
+		if *leaveData {
+			return
+		}
 		_, err := DoRequest("DELETE", route("/tags/"+tag.EncodedID), nil, nil, 204)
 		if err != nil {
 			t.Error(err)

@@ -3,23 +3,29 @@ package crypto
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	core "github.com/very-amused/CSplan-API/core"
+	"github.com/very-amused/CSplan-API/routes/auth"
 )
 
 // Keys - Cryptographic keypair for a user
 type Keys struct {
 	PublicKey  string `json:"publicKey" validate:"required,base64"`
 	PrivateKey string `json:"privateKey" validate:"required,base64"`
-	PBKDF2salt string `validate:"required,max=255,base64"`
+	// Salt passed to a hash function to generate the PrivateKey decryption key
+	HashSalt   string           `json:"hashSalt" validate:"required,max=255,base64"`
+	HashParams *auth.HashParams `json:"hashParams,omitempty" validate:"required"`
 }
 
 // KeysPatch - A patch to the user's KDF salt and/or RSA master keypair
 type KeysPatch struct {
-	PublicKey  string `json:"publicKey" validate:"omitempty,base64"`
-	PrivateKey string `json:"privateKey" validate:"omitempty,base64"`
-	PBKDF2salt string `validate:"omitempty,base64"`
+	PublicKey  *string          `json:"publicKey,omitempty" validate:"omitempty,base64"`
+	PrivateKey *string          `json:"privateKey,omitempty" validate:"omitempty,base64"`
+	HashSalt   *string          `json:"hashSalt,omitempty" validate:"omitempty,max=255,base64"`
+	HashParams *auth.HashParams `json:"hashParams,omitempty"`
 }
 
 // AddKeys - Create a user's keypair
@@ -33,8 +39,13 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert the keys into the DB
-	_, err := core.DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PrivateKey, PBKDF2salt) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?))",
-		user, keys.PublicKey, keys.PrivateKey, keys.PBKDF2salt)
+	encodedHashParams, err := json.Marshal(keys.HashParams)
+	if err != nil {
+		core.WriteError500(w, err)
+		return
+	}
+	_, err = core.DB.Exec("INSERT INTO CryptoKeys (UserID, PublicKey, PrivateKey, HashSalt, HashParams) VALUES (?, FROM_BASE64(?), FROM_BASE64(?), FROM_BASE64(?), ?)",
+		user, keys.PublicKey, keys.PrivateKey, keys.HashSalt, encodedHashParams)
 	if err != nil {
 		core.WriteError500(w, err)
 		return
@@ -44,10 +55,12 @@ func AddKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 }
 
 // GetKeys - Retrieve a user's key information
-func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	user := ctx.Value(core.Key("user")).(uint)
+func GetKeys(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
+	userID := ctx.Value(core.Key("user")).(uint)
 	var keys Keys
-	err := core.DB.Get(&keys, "SELECT TO_BASE64(PublicKey) AS PublicKey, TO_BASE64(PrivateKey) AS PrivateKey, TO_BASE64(PBKDF2salt) AS PBKDF2salt FROM CryptoKeys WHERE UserID = ?", user)
+	var encodedHashParams []byte
+	row := core.DB.QueryRow("SELECT TO_BASE64(PublicKey), TO_BASE64(PrivateKey), TO_BASE64(HashSalt), HashParams FROM CryptoKeys WHERE UserID = ?", userID)
+	err := row.Scan(&keys.PublicKey, &keys.PrivateKey, &keys.HashSalt, &encodedHashParams)
 	if err != nil {
 		core.WriteError(w, core.HTTPError{
 			Title:   "Not Found",
@@ -55,6 +68,7 @@ func GetKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			Status:  404})
 		return
 	}
+	json.Unmarshal(encodedHashParams, &keys.HashParams)
 
 	json.NewEncoder(w).Encode(keys)
 }
@@ -78,29 +92,58 @@ func UpdateKeys(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply any updates specified as a transaction
-	tx, err := core.DB.Begin()
-	defer tx.Rollback()
-	if err != nil {
-		core.WriteError500(w, err)
-		return
-	}
-	errs := make([]error, 2)
-	// RSA keys must be both patched at the same time
-	if len(patch.PrivateKey) > 0 && len(patch.PublicKey) > 0 {
-		_, errs[0] = tx.Exec("UPDATE CryptoKeys SET PrivateKey = FROM_BASE64(?), PublicKey = FROM_BASE64(?) WHERE UserID = ?",
-			patch.PrivateKey, patch.PublicKey, userID)
-	}
-	if len(patch.PBKDF2salt) > 0 {
-		_, errs[1] = tx.Exec("UPDATE CryptoKeys SET PBKDF2salt = FROM_BASE64(?) WHERE UserID = ?", patch.PBKDF2salt, userID)
-	}
-	for _, err := range errs {
+	var updateQuery []string
+	var updateValues []interface{}
+
+	// If hash params are being updated, the user's private key must also be updated because different hash params will produce a different key, and therefore differently encrypted data
+	if patch.HashSalt != nil && patch.HashParams != nil && patch.PrivateKey != nil {
+		// Validate hash params
+		if err := patch.HashParams.Validate(); err != nil {
+			core.WriteError(w, *err)
+			return
+		}
+
+		// Encode hash params
+		encodedHashParams, err := json.Marshal(patch.HashParams)
 		if err != nil {
 			core.WriteError500(w, err)
 			return
 		}
+		updateQuery = append(updateQuery, []string{
+			"HashSalt = FROM_BASE64(?)",
+			"HashParams = ?",
+			"PrivateKey = FROM_BASE64(?)"}...)
+		updateValues = append(updateValues, []interface{}{
+			*patch.HashSalt,
+			encodedHashParams,
+			*patch.PrivateKey}...)
+
+		// The user may also have specified an update to the public key
+		if patch.PublicKey != nil {
+			updateQuery = append(updateQuery, "PublicKey = FROM_BASE64(?)")
+			updateValues = append(updateValues, *patch.PublicKey)
+		}
+		// The other possible patch here would be if the user is updating their master keypair without any changes to their hashParams
+	} else if patch.PrivateKey != nil && patch.PublicKey != nil {
+		updateQuery = append(updateQuery, []string{
+			"PrivateKey = FROM_BASE64(?)",
+			"PublicKey = FROM_BASE64(?)"}...)
+		updateValues = append(updateValues, []interface{}{
+			*patch.PrivateKey,
+			*patch.PublicKey}...)
+	} else {
+		// Send the client a 412, indicating that no changes were made due to a failed precondition
+		w.WriteHeader(412)
+		return
 	}
-	tx.Commit()
+
+	_, err := core.DB.Exec(
+		fmt.Sprintf("UPDATE CryptoKeys SET %s WHERE UserID = ?", strings.Join(updateQuery, ",")),
+		append(updateValues, userID)...)
+	if err != nil {
+		core.WriteError500(w, err)
+		return
+	}
 
 	w.WriteHeader(200)
 }

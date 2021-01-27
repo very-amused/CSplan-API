@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS CSplanGo.CryptoKeys (
 	UserID bigint unsigned NOT NULL,
 	PublicKey blob NOT NULL,
 	PrivateKey blob NOT NULL,
-	PBKDF2salt tinyblob NOT NULL,
+	HashSalt tinyblob NOT NULL,
+	HashParams json NOT NULL,
 	PRIMARY KEY (UserID),
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
