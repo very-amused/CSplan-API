@@ -8,17 +8,17 @@ import (
 
 // HashParams - Parameters supplied to a hash function that derives the user's password into a key
 type HashParams struct {
-	Type     string  `json:"type"`
-	SaltLen  *uint8  `json:"saltLen"`
-	TimeCost *uint32 `json:"timeCost"`
-	MemCost  *uint32 `json:"memCost"`
-	Threads  *uint8  `json:"threads"`
+	Type       string  `json:"type"`
+	SaltLen    *uint8  `json:"saltLen"`
+	TimeCost   *uint32 `json:"timeCost"`
+	MemoryCost *uint32 `json:"memoryCost"`
+	Threads    *uint8  `json:"threads"`
 }
 
 // Argon2 max values
 const argon2MaxTimeCost = 10
-const argon2MaxMemCost = 2097152 // 2GiB
-const argon2MaxThreads = 1       // Restrict to 1 thread
+const argon2MaxMemoryCost = 2097152 // 2GiB
+const argon2MaxThreads = 1          // Restrict to 1 thread
 
 // Validate a set of HashParams
 func (h HashParams) Validate() (err *core.HTTPError) {
@@ -46,7 +46,7 @@ func (h HashParams) Validate() (err *core.HTTPError) {
 func (h HashParams) validateArgon2() (e error) {
 	// Make sure all needed parameters are supplied
 	if h.TimeCost == nil ||
-		h.MemCost == nil ||
+		h.MemoryCost == nil ||
 		h.Threads == nil ||
 		h.SaltLen == nil {
 		return fmt.Errorf("Missing hash parameters (argon2i: timeCost, memCost, threads).")
@@ -56,8 +56,8 @@ func (h HashParams) validateArgon2() (e error) {
 		return fmt.Errorf("Invalid salt length (argon2i, max 16).")
 	} else if *h.TimeCost < 1 || *h.TimeCost > argon2MaxTimeCost {
 		return fmt.Errorf("Invalid time cost (argon2i, 1-%d).", argon2MaxTimeCost)
-	} else if *h.MemCost < 1 || *h.MemCost > argon2MaxMemCost {
-		return fmt.Errorf("Invalid memory cost (argon2i, 1-%d).", argon2MaxMemCost)
+	} else if *h.MemoryCost < 1 || *h.MemoryCost > argon2MaxMemoryCost {
+		return fmt.Errorf("Invalid memory cost (argon2i, 1-%d).", argon2MaxMemoryCost)
 	} else if *h.Threads < 1 || *h.Threads > argon2MaxThreads {
 		return fmt.Errorf("Invalid thread count (argon2i, 1-%d).", argon2MaxThreads)
 	}

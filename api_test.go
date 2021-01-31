@@ -55,11 +55,11 @@ var (
 	saltLen     uint8  = 16
 
 	hashParams = auth.HashParams{
-		Type:     "argon2i",
-		TimeCost: &timeCost,
-		MemCost:  &memCost,
-		Threads:  &parallelism,
-		SaltLen:  &saltLen}
+		Type:       "argon2i",
+		TimeCost:   &timeCost,
+		MemoryCost: &memCost,
+		Threads:    &parallelism,
+		SaltLen:    &saltLen}
 
 	keys = crypto.Keys{
 		PublicKey:  *encode("public key"),
@@ -253,11 +253,11 @@ func TestKeys(t *testing.T) {
 	})
 	t.Run("Invalid Hash Parameters", func(t *testing.T) {
 		newHashParams := auth.HashParams{
-			Type:     "argon2i",
-			SaltLen:  hashParams.SaltLen,
-			MemCost:  hashParams.MemCost,
-			TimeCost: new(uint32),
-			Threads:  new(uint8)}
+			Type:       "argon2i",
+			SaltLen:    hashParams.SaltLen,
+			MemoryCost: hashParams.MemoryCost,
+			TimeCost:   new(uint32),
+			Threads:    new(uint8)}
 		*newHashParams.TimeCost = 15
 		*newHashParams.Threads = 2
 		_, err := DoRequest("PATCH", route("/keys"), crypto.KeysPatch{
