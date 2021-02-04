@@ -14,6 +14,9 @@ import (
 	core "github.com/very-amused/CSplan-API/core"
 )
 
+// Size in bytes of random IV passed to CTR cipher each time
+const IVlen = 16
+
 // Challenge - Encryption challenge to obtain authentication
 type Challenge struct {
 	ID          uint        `json:"-"`
@@ -26,16 +29,15 @@ type Challenge struct {
 
 func (challenge *Challenge) encryptData(block cipher.Block) error {
 	// Generate an IV for the operation
-	iv := make([]byte, 12)
+	iv := make([]byte, IVlen)
 	rand.Read(iv)
 
-	// Create a GCM cipher
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return err
-	}
-	// Encrypt the data and store it as challenge.EncodedData
-	encrypted := gcm.Seal(nil, iv, challenge.Data, nil)
+	// Create a CTR cipher
+	ctr := cipher.NewCTR(block, iv)
+	encrypted := make([]byte, len(challenge.Data))
+	ctr.XORKeyStream(encrypted, challenge.Data)
+
+	// Encode the encrypted data to send to the client
 	challenge.EncodedData = base64.StdEncoding.EncodeToString(append(iv, encrypted...))
 	return nil
 }

@@ -321,16 +321,14 @@ func TestChallengeAuth(t *testing.T) {
 		// Recreate the key derivation using the params sent by the API
 		salt, _ := base64.StdEncoding.DecodeString(challenge.Salt)
 		newKey := argon2.Key(password, salt, timeCost, memCost, parallelism, 32)
-		iv := ivAndEncryptedData[0:12]
+		iv := ivAndEncryptedData[0:16]
 
 		// Decrypt the challenge data
-		encryptedData := ivAndEncryptedData[12:]
+		encrypted := ivAndEncryptedData[16:]
 		block, _ := aes.NewCipher(newKey)
-		gcm, _ := cipher.NewGCM(block)
-		decrypted, err := gcm.Open(nil, iv, encryptedData, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ctr := cipher.NewCTR(block, iv)
+		decrypted := make([]byte, len(encrypted))
+		ctr.XORKeyStream(decrypted, encrypted)
 		challenge.EncodedData = base64.StdEncoding.EncodeToString(decrypted)
 	})
 	t.Run("Submit Challenge", func(t *testing.T) {
