@@ -74,6 +74,9 @@ func LoadRoutes() {
 	Map["POST:/totp"] = &Route{
 		handler:   auth.SetTOTP,
 		AuthLevel: 1}
+	Map["GET:/totp/backup_codes"] = &Route{
+		handler:   auth.GetBackupCodes,
+		AuthLevel: 1}
 
 	// Session management
 	Map["POST:/logout"] = &Route{

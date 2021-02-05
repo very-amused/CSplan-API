@@ -22,7 +22,7 @@ var backupCodeMax = big.NewInt(99999999)
 type TOTPInfo struct {
 	UserID        uint     `json:"-"`
 	Secret        []byte   `json:"-"`
-	EncodedSecret string   `json:"secret"`
+	EncodedSecret string   `json:"secret,omitempty"`
 	BackupCodes   []uint64 `json:"backupCodes"`
 }
 
@@ -49,6 +49,31 @@ func SetTOTP(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 			Message: "To enable or disable TOTP, either ?action=enable or ?action=disable must be specified.",
 			Status:  429})
 	}
+}
+
+func GetBackupCodes(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
+	userID := ctx.Value(core.Key("user")).(uint)
+
+	rows, err := core.DB.Query("SELECT BackupCodes FROM TOTP WHERE UserID = ?", userID)
+	defer rows.Close()
+	if err != nil {
+		core.WriteError500(w, err)
+		return
+	}
+
+	if !rows.Next() {
+		core.WriteError(w, core.HTTPError{
+			Title:   "Precondition Failed",
+			Message: "TOTP is not enabled for this user.",
+			Status:  412})
+		return
+	}
+
+	// No decoding and re-encoding is necessary because the backup codes are already stored as json
+	var encodedBackupCodes []byte
+	rows.Scan(&encodedBackupCodes)
+
+	w.Write(encodedBackupCodes)
 }
 
 func validateTOTP(totp TOTPInfo, code uint64) (e *core.HTTPError) {
