@@ -71,6 +71,9 @@ func LoadRoutes() {
 			handler:   auth.Login,
 			AuthLevel: 0}
 	}
+	Map["POST:/totp"] = &Route{
+		handler:   auth.SetTOTP,
+		AuthLevel: 1}
 
 	// Session management
 	Map["POST:/logout"] = &Route{

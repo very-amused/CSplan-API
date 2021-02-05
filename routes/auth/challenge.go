@@ -27,6 +27,11 @@ type Challenge struct {
 	HashParams  *HashParams `json:"hashParams,omitempty"`
 }
 
+type ChallengeRequest struct {
+	User
+	TOTPcode *uint64 `json:"TOTP_Code" validate:"required"`
+}
+
 func (challenge *Challenge) encryptData(block cipher.Block) error {
 	// Generate an IV for the operation
 	iv := make([]byte, IVlen)
@@ -53,7 +58,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var user User
+	var user ChallengeRequest
 	json.NewDecoder(r.Body).Decode(&user)
 
 	if !user.exists() {
@@ -65,6 +70,32 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 	}
 	// Get the user's ID
 	core.DB.Get(&user.ID, "SELECT ID FROM Users WHERE Email = ?", user.Email)
+
+	// If the user has 2FA enabled, send a 412 (precondition failed), indicating that the client must submit a TOTP code along with the challenge request
+	rows, err := core.DB.Query("SELECT _Secret, BackupCodes FROM TOTP WHERE UserID = ?", user.ID)
+	defer rows.Close()
+	if err != nil {
+		core.WriteError500(w, err)
+		return
+	}
+	if rows.Next() {
+		if user.TOTPcode == nil {
+			core.WriteError(w, core.HTTPError{
+				Title:   "Precondition Failed",
+				Message: "TOTP code required to log in.",
+				Status:  412})
+			return
+		}
+		var totp TOTPInfo
+		var encodedBackupCodes []byte
+		rows.Scan(&totp.Secret, &encodedBackupCodes)
+		json.Unmarshal(encodedBackupCodes, &totp.BackupCodes)
+		totp.UserID = user.ID
+		if httpErr := validateTOTP(totp, *user.TOTPcode); httpErr != nil {
+			core.WriteError(w, *httpErr)
+			return
+		}
+	}
 
 	// If there are 5+ pending challenges for the user, or 10+ failed attempts decline providing a new one
 	var pending uint
@@ -83,7 +114,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 	var saltAndKey []byte
 	row := core.DB.QueryRow("SELECT AuthKey, HashParams FROM AuthKeys WHERE UserID = ?", user.ID)
 	var encodedHashParams []byte
-	err := row.Scan(&saltAndKey, &encodedHashParams)
+	err = row.Scan(&saltAndKey, &encodedHashParams)
 	// Decode hash params
 	challenge.HashParams = &HashParams{}
 	json.Unmarshal(encodedHashParams, challenge.HashParams)

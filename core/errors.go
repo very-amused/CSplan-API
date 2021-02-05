@@ -26,6 +26,13 @@ func init() {
 	validate = validator.New()
 }
 
+func ServerErrorFrom(e error) HTTPError {
+	return HTTPError{
+		Title:   "Internal Server Error",
+		Message: e.Error(),
+		Status:  500}
+}
+
 // WriteError - Write a JSON formatted error to w
 func WriteError(w http.ResponseWriter, e HTTPError) {
 	w.WriteHeader(e.Status)
@@ -56,10 +63,7 @@ func WriteError400(w http.ResponseWriter, msg string) {
 func WriteError500(w http.ResponseWriter, e error) {
 	// Because these errors are at the server's fault, it is important to log their messages to gain an idea of where errors are frequently occuring
 	log.Println(e)
-	WriteError(w, HTTPError{
-		Title:   "Internal Server Error",
-		Message: e.Error(),
-		Status:  500})
+	WriteError(w, ServerErrorFrom(e))
 }
 
 // WriteError404 - Write a JSON formatted 404 error to w

@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS CSplanGo.AuthKeys (
 	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
 );
 
+CREATE TABLE IF NOT EXISTS CSplanGo.TOTP (
+	UserID bigint unsigned NOT NULL,
+	_Secret blob NOT NULL,
+	BackupCodes json NOT NULL,
+	PRIMARY KEY (UserID),
+	FOREIGN KEY (UserID) REFERENCES CSplanGo.Users(ID)
+);
+
 -- User authentication and session information
 CREATE TABLE IF NOT EXISTS CSplanGo.Sessions (
 	ID bigint unsigned NOT NULL,
