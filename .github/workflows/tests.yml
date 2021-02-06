@@ -22,6 +22,6 @@ jobs:
       - name: Start API
         run: MARIADB_PASSWORD="root" nohup ./CSplan-API -db-user=root -allow-auth-bypass &
       - name: Run Tests
-        run: go test -v .
+        run: go test .
       - name: Stop API
         run: killall CSplan-API
