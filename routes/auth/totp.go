@@ -84,9 +84,9 @@ func validateTOTP(totp TOTPInfo, code uint64) (e *core.HTTPError) {
 	// Create a second counter 2s in the past, accounting for up to 2s of network delay
 	backupCounter := uint64(math.Floor(float64(now-2) / float64(30)))
 
-	if correct := runTOTP(totp.Secret, counter); int32(code) == correct {
+	if correct := RunTOTP(totp.Secret, counter); int32(code) == correct {
 		return nil
-	} else if correct := runTOTP(totp.Secret, backupCounter); int32(code) == correct {
+	} else if correct := RunTOTP(totp.Secret, backupCounter); int32(code) == correct {
 		return nil
 	}
 
@@ -112,7 +112,7 @@ func validateTOTP(totp TOTPInfo, code uint64) (e *core.HTTPError) {
 		Status:  401}
 }
 
-func runTOTP(secret []byte, counter uint64) (code int32) {
+func RunTOTP(secret []byte, counter uint64) (code int32) {
 	// Encode counter as big endian binary
 	binCounter := make([]byte, 8)
 	binary.BigEndian.PutUint64(binCounter, counter)

@@ -58,7 +58,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var user ChallengeRequest
+	var user User
 	json.NewDecoder(r.Body).Decode(&user)
 
 	if !user.exists() {
@@ -79,7 +79,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if rows.Next() {
-		if user.TOTPcode == nil {
+		if user.TOTPCode == nil {
 			core.WriteError(w, core.HTTPError{
 				Title:   "Precondition Failed",
 				Message: "TOTP code required to log in.",
@@ -91,7 +91,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 		rows.Scan(&totp.Secret, &encodedBackupCodes)
 		json.Unmarshal(encodedBackupCodes, &totp.BackupCodes)
 		totp.UserID = user.ID
-		if httpErr := validateTOTP(totp, *user.TOTPcode); httpErr != nil {
+		if httpErr := validateTOTP(totp, *user.TOTPCode); httpErr != nil {
 			core.WriteError(w, *httpErr)
 			return
 		}
@@ -157,6 +157,7 @@ func RequestChallenge(_ context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(challenge)
 }
 

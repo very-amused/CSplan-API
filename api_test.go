@@ -5,17 +5,20 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 
@@ -310,9 +313,9 @@ func TestChallengeAuth(t *testing.T) {
 		}
 	})
 	t.Run("Request Auth Challenge", func(t *testing.T) {
-		r, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 200)
+		r, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 201)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		json.NewDecoder(r.Body).Decode(&challenge)
 		ivAndEncryptedData, _ = base64.StdEncoding.DecodeString(challenge.EncodedData)
@@ -338,6 +341,64 @@ func TestChallengeAuth(t *testing.T) {
 		}
 		var session auth.Session
 		json.NewDecoder(r.Body).Decode(&session)
+	})
+}
+
+func TestTOTP(t *testing.T) {
+	var totp auth.TOTPInfo
+	t.Run("Enable TOTP", func(t *testing.T) {
+		r, err := DoRequest("POST", route("/totp?action=enable"), nil, nil, 201)
+		if err != nil {
+			t.Fatal(err)
+		}
+		json.NewDecoder(r.Body).Decode(&totp)
+		totp.Secret, _ = base32.StdEncoding.DecodeString(totp.EncodedSecret)
+	})
+	t.Run("TOTP Enforced", func(t *testing.T) {
+		// TOTP codes should be required
+		_, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 412)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Run TOTP with an incorrect counter to yield an incorrect code, should be unauthorized to request challenges
+		counter := uint64(math.Floor(float64(time.Now().Unix()) / 30))
+		user.TOTPCode = new(uint64)
+		*user.TOTPCode = uint64(auth.RunTOTP(totp.Secret, counter-2))
+		_, err = DoRequest("POST", route("/challenge?action=request"), user, nil, 401)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("Authenticate with backup code", func(t *testing.T) {
+		*user.TOTPCode = totp.BackupCodes[0]
+		_, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 201)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Backup code invalidated", func(t *testing.T) {
+		_, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 401)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Authenticate with TOTP code", func(t *testing.T) {
+		now := time.Now().Unix()
+		counter := uint64(math.Floor(float64(now) / float64(30)))
+		fmt.Println(totp.Secret)
+		code := auth.RunTOTP(totp.Secret, counter)
+		*user.TOTPCode = uint64(code)
+		_, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 201)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("Disable TOTP", func(t *testing.T) {
+		_, err := DoRequest("POST", route("/totp?action=disable"), nil, nil, 204)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 }
 

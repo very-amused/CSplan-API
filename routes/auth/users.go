@@ -22,6 +22,7 @@ type User struct {
 	DeviceInfo string      `json:"-"`
 	AuthKey    string      `json:"key" validate:"required,base64,max=64"` // The AES-GCM authentication key used to provide encryption challenges for the user
 	HashParams *HashParams `json:"hashParams" validate:"required"`
+	TOTPCode   *uint64     `json:"TOTP_Code,omitempty"`
 }
 
 // UserState - State information for a user
@@ -273,6 +274,7 @@ func DeleteAccount(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 			"DELETE FROM TodoLists WHERE UserID = ?",
 			"DELETE FROM Names WHERE UserID = ?",
 			"DELETE FROM AuthKeys WHERE UserID = ?",
+			"DELETE FROM TOTP WHERE UserID = ?",
 			"DELETE FROM CryptoKeys WHERE UserID = ?",
 			"DELETE FROM DeleteTokens WHERE UserID = ?",
 			"DELETE FROM Sessions WHERE UserID = ?",
