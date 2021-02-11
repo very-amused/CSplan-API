@@ -15,7 +15,12 @@ CSplan - go backend
 - [x] Add session management
 - [x] Optimize storage efficiency of tokens
 - [ ] Patch structs should use pointers so empty strings, etc aren't omitted
-~~Index auth tokens~~
 - [x] Add session identification to auth tokens
 - [x] Refactor routes into subpackages, moving frequently reused code into a core package
-- [ ] Update both auth and crypto keys to store hash parameters
+- [x] Update both auth and crypto keys to store hash parameters
+### Identity
+- [ ] Support for both encrypted and unencrypted usernames, names, profile picture
+- [ ] Unencrypted profile sharing perms
+- [ ] User tag generation (id via username#tag) with unencrypted usernames
+### Long term
+- [ ] Anonymous account support (id via server assigned UserID, unable to reset password or receive info via mail)

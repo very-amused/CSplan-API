@@ -386,7 +386,6 @@ func TestTOTP(t *testing.T) {
 	t.Run("Authenticate with TOTP code", func(t *testing.T) {
 		now := time.Now().Unix()
 		counter := uint64(math.Floor(float64(now) / float64(30)))
-		fmt.Println(totp.Secret)
 		code := auth.RunTOTP(totp.Secret, counter)
 		*user.TOTPCode = uint64(code)
 		_, err := DoRequest("POST", route("/challenge?action=request"), user, nil, 201)
